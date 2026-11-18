@@ -7,7 +7,7 @@ import uuid
 from flask import Flask, request, jsonify
 from werkzeug.serving import make_server
 import requests
-from PySide6.QtCore import Qt, QTimer, QObject, Signal, QRunnable, QThreadPool
+from PySide6.QtCore import Qt, QTimer, QObject, Signal, QRunnable, QThreadPool, QDate
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
     QLabel, QLineEdit, QPushButton, QTableWidget, QTableWidgetItem, QMessageBox,
@@ -17,7 +17,7 @@ from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment
 from openpyxl.utils import get_column_letter
 
-APP_NAME = "사내 발주 관리"
+APP_NAME = "발주 관리"
 PORT = 8765
 BASE_DIR = Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "SaenaeOrderManager"
 BASE_DIR.mkdir(parents=True, exist_ok=True)
@@ -215,9 +215,15 @@ class OrderDialog(QDialog):
         self.item_no = QLineEdit()
         self.item_name = QLineEdit()
         self.quantity = QLineEdit(); self.quantity.setPlaceholderText("선택 입력")
-        self.due_date = QLineEdit(); self.due_date.setPlaceholderText("선택 입력 / YYYY-MM-DD")
+        self.due_date = QDateEdit()
+        self.order_date = QDateEdit()
+        for date_field in (self.due_date, self.order_date):
+            date_field.setCalendarPopup(True)
+            date_field.setDisplayFormat("yyyy-MM-dd")
+            date_field.setMinimumDate(QDate(1900, 1, 1))
+            date_field.setSpecialValueText("선택 안 함")
+            date_field.setDate(QDate(1900, 1, 1))
         self.vendor = QLineEdit()
-        self.order_date = QLineEdit(); self.order_date.setPlaceholderText("선택 입력 / YYYY-MM-DD")
         self.status = QComboBox(); self.status.addItems(["진행중", "완료"])
         form.addRow("품번", self.item_no)
         form.addRow("품명", self.item_name)
@@ -235,18 +241,18 @@ class OrderDialog(QDialog):
             self.item_no.setText(str(row.get("item_no", "")))
             self.item_name.setText(str(row.get("item_name", "")))
             self.quantity.setText(str(row.get("quantity", "")))
-            self.due_date.setText(str(row.get("due_date", "")))
+            self.due_date.setDate(QDate.fromString(row["due_date"], "yyyy-MM-dd") if row.get("due_date") else self.due_date.minimumDate())
             self.vendor.setText(str(row.get("vendor", "")))
-            self.order_date.setText(str(row.get("order_date", "")))
+            self.order_date.setDate(QDate.fromString(row["order_date"], "yyyy-MM-dd") if row.get("order_date") else self.order_date.minimumDate())
             self.status.setCurrentText(row.get("status", "진행중"))
     def data(self):
         return {
             "item_no": self.item_no.text().strip(),
             "item_name": self.item_name.text().strip(),
             "quantity": self.quantity.text().strip(),
-            "due_date": self.due_date.text().strip(),
+            "due_date": "" if self.due_date.date() == self.due_date.minimumDate() else self.due_date.date().toString("yyyy-MM-dd"),
             "vendor": self.vendor.text().strip(),
-            "order_date": self.order_date.text().strip(),
+            "order_date": "" if self.order_date.date() == self.order_date.minimumDate() else self.order_date.date().toString("yyyy-MM-dd"),
             "status": self.status.currentText()
         }
 
@@ -285,7 +291,7 @@ class MainWindow(QMainWindow):
         root = QVBoxLayout(central)
 
         top = QHBoxLayout()
-        title = QLabel("사내 발주 관리"); title.setStyleSheet("font-size:22px;font-weight:700;")
+        title = QLabel("발주 관리"); title.setStyleSheet("font-size:22px;font-weight:700;")
         self.connection = QLabel()
         self.host = QLineEdit(self.config["server_host"]); self.host.setPlaceholderText("메인 PC IP 주소")
         self.host.setMaximumWidth(180)

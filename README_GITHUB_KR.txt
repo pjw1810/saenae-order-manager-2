@@ -1,4 +1,4 @@
-사내 발주 관리 - GitHub 자동 빌드 프로젝트
+발주 관리 - GitHub 자동 빌드 프로젝트
 
 이 저장소는 GitHub Actions가 Windows 클라우드 러너에서 EXE와 Setup.exe를 빌드하도록 구성되어 있습니다.
 빌드용 PC에도 Python을 설치할 필요가 없습니다. (GitHub Actions가 빌드 중 Python을 임시 설치합니다.)
