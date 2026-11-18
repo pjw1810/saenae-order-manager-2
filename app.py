@@ -222,7 +222,8 @@ class OrderDialog(QDialog):
             date_field.setDisplayFormat("yyyy-MM-dd")
             date_field.setMinimumDate(QDate(1900, 1, 1))
             date_field.setSpecialValueText("선택 안 함")
-            date_field.setDate(QDate(1900, 1, 1))
+            # 새 발주 등록 시 날짜 기본값은 오늘로 설정
+            date_field.setDate(QDate.currentDate())
         self.vendor = QLineEdit()
         self.status = QComboBox(); self.status.addItems(["진행중", "완료"])
         form.addRow("품번", self.item_no)

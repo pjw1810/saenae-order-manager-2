@@ -1,6 +1,6 @@
 !include "MUI2.nsh"
-Name "발주 관리"
-OutFile "SaenaeOrderManager_Setup.exe"
+Name "Order Manager"
+OutFile "OrderManager_Setup.exe"
 InstallDir "$PROGRAMFILES64\OrderManager"
 RequestExecutionLevel admin
 !define MUI_ABORTWARNING
