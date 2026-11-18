@@ -1,17 +1,16 @@
+
 name: Build Windows installer
 
 on:
   workflow_dispatch:
   push:
-    tags:
-      - "v*"
-
-permissions:
-  contents: write
+    branches:
+      - main
 
 jobs:
   build:
     runs-on: windows-latest
+
     steps:
       - name: Checkout source
         uses: actions/checkout@v4
@@ -19,51 +18,68 @@ jobs:
       - name: Set up Python (build machine only)
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: '3.11'
 
       - name: Install dependencies
-        shell: pwsh
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -r requirements.txt
-          python -m pip install pyinstaller==6.11.1
+          pip install -r requirements.txt
+          pip install pyinstaller
 
       - name: Build application
-        shell: pwsh
         run: |
-          python -m PyInstaller --noconfirm --clean --windowed --name SaenaeOrderManager --collect-all PySide6 --collect-all flask --collect-all openpyxl app.py
+          pyinstaller --noconfirm --windowed --name SaenaeOrderManager app.py
 
       - name: Install NSIS
         shell: pwsh
         run: |
-          choco install nsis --no-progress -y
+          choco install nsis --yes --no-progress
 
- - name: Build Setup.exe
-  shell: pwsh
-  run: |
-    $nsis = "${env:ProgramFiles(x86)}\NSIS\makensis.exe"
+      - name: Build Setup.exe
+        shell: pwsh
+        run: |
+          $paths = @(
+            "${env:ProgramFiles(x86)}\NSIS\makensis.exe",
+            "$env:ProgramFiles\NSIS\makensis.exe"
+          )
 
-    if (!(Test-Path $nsis)) {
-      $nsis = "$env:ProgramFiles\NSIS\makensis.exe"
-    }
+          $nsis = $null
 
-    if (!(Test-Path $nsis)) {
-      $nsis = (Get-Command makensis.exe -ErrorAction Stop).Source
-    }
+          foreach ($path in $paths) {
+            if (Test-Path $path) {
+              $nsis = $path
+              break
+            }
+          }
 
-    & $nsis installer.nsi
+          if (!$nsis) {
+            $found = Get-ChildItem `
+              -Path $env:ProgramFiles, ${env:ProgramFiles(x86)} `
+              -Filter makensis.exe `
+              -Recurse -ErrorAction SilentlyContinue |
+              Select-Object -First 1
+
+            if ($found) {
+              $nsis = $found.FullName
+            }
+          }
+
+          if (!$nsis) {
+            throw "NSIS makensis.exe not found"
+          }
+
+          & $nsis installer.nsi
+
+          if ($LASTEXITCODE -ne 0) {
+            throw "NSIS build failed"
+          }
+
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
           name: SaenaeOrderManager-Windows-Installer
           path: |
             SaenaeOrderManager_Setup.exe
-            dist/SaenaeOrderManager/SaenaeOrderManager.exe
+            dist/SaenaeOrderManager/
+          if-no-files-found: error
           retention-days: 30
-
-      - name: Publish release for version tag
-        if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v2
-        with:
-          files: SaenaeOrderManager_Setup.exe
-          generate_release_notes: true
