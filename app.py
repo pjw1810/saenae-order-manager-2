@@ -11,7 +11,7 @@ from PySide6.QtCore import Qt, QTimer, QObject, Signal, QRunnable, QThreadPool, 
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
     QLabel, QLineEdit, QPushButton, QTableWidget, QTableWidgetItem, QMessageBox,
-    QDialog, QFormLayout, QSpinBox, QDateEdit, QComboBox, QFileDialog, QCheckBox
+    QDialog, QFormLayout, QSpinBox, QDateEdit, QComboBox, QFileDialog, QCheckBox, QFrame, QHeaderView
 )
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment
@@ -290,43 +290,131 @@ class MainWindow(QMainWindow):
         self.resize(1180, 700)
         central = QWidget(); self.setCentralWidget(central)
         root = QVBoxLayout(central)
+        root.setContentsMargins(26, 22, 26, 16)
+        root.setSpacing(15)
 
-        top = QHBoxLayout()
-        title = QLabel("발주 관리"); title.setStyleSheet("font-size:22px;font-weight:700;")
-        self.connection = QLabel()
-        self.host = QLineEdit(self.config["server_host"]); self.host.setPlaceholderText("메인 PC IP 주소")
-        self.host.setMaximumWidth(180)
+        # Header
+        header_panel = QFrame()
+        header_panel.setObjectName("headerPanel")
+        header = QHBoxLayout(header_panel)
+        header.setContentsMargins(22, 17, 22, 17)
+        header.setSpacing(14)
+
+        title_box = QVBoxLayout()
+        title = QLabel("발주 관리")
+        title.setObjectName("pageTitle")
+        subtitle = QLabel("사내 발주 현황을 한곳에서 관리하세요")
+        subtitle.setObjectName("pageSubtitle")
+        title_box.addWidget(title)
+        title_box.addWidget(subtitle)
+        header.addLayout(title_box)
+        header.addStretch()
+
+        self.connection = QLabel("● 연결 확인 중")
+        self.connection.setObjectName("connectionBadge")
+        header.addWidget(self.connection)
+        root.addWidget(header_panel)
+
+        # Connection and startup settings
+        settings_panel = QFrame()
+        settings_panel.setObjectName("surfacePanel")
+        settings = QHBoxLayout(settings_panel)
+        settings.setContentsMargins(18, 12, 18, 12)
+        settings.setSpacing(12)
+
+        server_label = QLabel("서버 주소")
+        server_label.setObjectName("fieldLabel")
+        self.host = QLineEdit(self.config["server_host"])
+        self.host.setPlaceholderText("메인 PC IP 주소")
+        self.host.setFixedWidth(170)
         self.server_check = QCheckBox("이 PC를 메인 서버로 사용")
         self.server_check.setChecked(self.config["server_mode"])
         self.autostart_check = QCheckBox("Windows 로그인 시 자동 실행")
         self.autostart_check.setChecked(self.config.get("auto_start", False))
         save_conn = QPushButton("설정 저장")
+        save_conn.setObjectName("secondaryButton")
         save_conn.clicked.connect(self.save_connection)
-        top.addWidget(title); top.addStretch(); top.addWidget(QLabel("서버 주소")); top.addWidget(self.host)
-        top.addWidget(self.server_check); top.addWidget(self.autostart_check); top.addWidget(save_conn)
-        root.addLayout(top)
 
-        actions = QHBoxLayout()
-        self.search = QLineEdit(); self.search.setPlaceholderText("전체 항목 검색")
+        settings.addWidget(server_label)
+        settings.addWidget(self.host)
+        settings.addSpacing(8)
+        settings.addWidget(self.server_check)
+        settings.addWidget(self.autostart_check)
+        settings.addStretch()
+        settings.addWidget(save_conn)
+        root.addWidget(settings_panel)
+
+        # Main action toolbar
+        actions_panel = QFrame()
+        actions_panel.setObjectName("surfacePanel")
+        actions = QHBoxLayout(actions_panel)
+        actions.setContentsMargins(14, 12, 14, 12)
+        actions.setSpacing(8)
+
+        self.search = QLineEdit()
+        self.search.setPlaceholderText("⌕  품번, 품명, 거래처 등 전체 검색")
+        self.search.setMinimumWidth(190)
         self.search.textChanged.connect(self.apply_filter)
-        add = QPushButton("＋ 발주 등록"); add.clicked.connect(self.add_order)
-        edit = QPushButton("선택 항목 수정"); edit.clicked.connect(self.edit_order)
-        delete = QPushButton("선택 항목 삭제"); delete.clicked.connect(self.delete_order)
-        delivered = QPushButton("납품 완료"); delivered.clicked.connect(self.mark_delivered)
-        export = QPushButton("엑셀 내보내기"); export.clicked.connect(self.export_excel)
-        refresh = QPushButton("새로고침"); refresh.clicked.connect(self.refresh)
-        backup = QPushButton("백업하기"); backup.clicked.connect(self.manual_backup)
-        for w in [self.search, add, edit, delete, delivered, export, refresh, backup]: actions.addWidget(w)
-        root.addLayout(actions)
+
+        add = QPushButton("＋  발주 등록")
+        add.setObjectName("primaryButton")
+        add.clicked.connect(self.add_order)
+        edit = QPushButton("수정")
+        edit.setObjectName("secondaryButton")
+        edit.clicked.connect(self.edit_order)
+        delete = QPushButton("삭제")
+        delete.setObjectName("dangerButton")
+        delete.clicked.connect(self.delete_order)
+        delivered = QPushButton("납품 완료")
+        delivered.setObjectName("successButton")
+        delivered.clicked.connect(self.mark_delivered)
+        export = QPushButton("엑셀 내보내기")
+        export.setObjectName("secondaryButton")
+        export.clicked.connect(self.export_excel)
+        refresh = QPushButton("새로고침")
+        refresh.setObjectName("secondaryButton")
+        refresh.clicked.connect(self.refresh)
+        backup = QPushButton("백업")
+        backup.setObjectName("secondaryButton")
+        backup.clicked.connect(self.manual_backup)
+
+        actions.addWidget(self.search, 1)
+        actions.addWidget(add)
+        actions.addWidget(edit)
+        actions.addWidget(delete)
+        actions.addWidget(delivered)
+        actions.addWidget(export)
+        actions.addWidget(refresh)
+        actions.addWidget(backup)
+        root.addWidget(actions_panel)
+
+        # Compact filters
+        filters_panel = QFrame()
+        filters_panel.setObjectName("surfacePanel")
+        filter_row = QHBoxLayout(filters_panel)
+        filter_row.setContentsMargins(18, 10, 18, 10)
+        filter_row.setSpacing(10)
+        filter_title = QLabel("상세 필터")
+        filter_title.setObjectName("fieldLabel")
+        filter_row.addWidget(filter_title)
 
         self.filters = {}
-        filter_row = QHBoxLayout()
-        filter_row.addWidget(QLabel("항목별 필터"))
-        for key, label in [("item_no","품번"),("item_name","품명"),("vendor","거래처"),("status","상태")]:
-            field = QLineEdit(); field.setPlaceholderText(label)
-            field.setMaximumWidth(150); field.textChanged.connect(self.apply_filter)
-            self.filters[key] = field; filter_row.addWidget(field)
-        root.addLayout(filter_row)
+        for key, label in [("item_no", "품번"), ("item_name", "품명"), ("vendor", "거래처"), ("status", "상태")]:
+            field = QLineEdit()
+            field.setPlaceholderText(f"{label} 필터")
+            field.setMaximumWidth(170)
+            field.textChanged.connect(self.apply_filter)
+            self.filters[key] = field
+            filter_row.addWidget(field)
+        filter_row.addStretch()
+        root.addWidget(filters_panel)
+
+        # Order list
+        table_panel = QFrame()
+        table_panel.setObjectName("tablePanel")
+        table_layout = QVBoxLayout(table_panel)
+        table_layout.setContentsMargins(10, 10, 10, 10)
+        table_layout.setSpacing(0)
 
         self.table = QTableWidget(0, len(self.headers))
         self.table.setHorizontalHeaderLabels(self.headers)
@@ -334,10 +422,15 @@ class MainWindow(QMainWindow):
         self.table.setSortingEnabled(True)
         self.table.setSelectionBehavior(QTableWidget.SelectRows)
         self.table.setSelectionMode(QTableWidget.SingleSelection)
-        self.table.horizontalHeader().setStretchLastSection(True)
         self.table.setEditTriggers(QTableWidget.NoEditTriggers)
+        self.table.setShowGrid(False)
+        self.table.verticalHeader().setVisible(False)
+        self.table.verticalHeader().setDefaultSectionSize(42)
+        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.table.horizontalHeader().setMinimumHeight(42)
         self.table.doubleClicked.connect(self.edit_order)
-        root.addWidget(self.table)
+        table_layout.addWidget(self.table)
+        root.addWidget(table_panel, 1)
 
         self.statusbar = self.statusBar()
         self.thread_pool = QThreadPool.globalInstance()
@@ -411,8 +504,10 @@ class MainWindow(QMainWindow):
     def _on_refresh_success(self, rows):
         self._polling = False
         signature = json.dumps(rows, ensure_ascii=False, sort_keys=True)
-        self.connection.setText("● 연결됨")
-        self.connection.setStyleSheet("color:#16803c;font-weight:600")
+        self.connection.setText("● 서버 연결됨")
+        self.connection.setProperty("state", "connected")
+        self.connection.style().unpolish(self.connection)
+        self.connection.style().polish(self.connection)
         if signature != self._last_data_signature:
             self._last_data_signature = signature
             self.rows = rows
@@ -422,7 +517,9 @@ class MainWindow(QMainWindow):
     def _on_refresh_failed(self, error):
         self._polling = False
         self.connection.setText("● 서버 연결 안 됨")
-        self.connection.setStyleSheet("color:#c0392b;font-weight:600")
+        self.connection.setProperty("state", "disconnected")
+        self.connection.style().unpolish(self.connection)
+        self.connection.style().polish(self.connection)
         self.statusbar.showMessage(f"서버 연결 실패: {error} ({self.base_url()})")
 
     def render(self):
@@ -566,7 +663,141 @@ def PatternBrush(color):
 def main():
     app = QApplication(sys.argv)
     app.setStyle("Fusion")
-    w = MainWindow(); w.show()
+    app.setStyleSheet("""
+        QWidget {
+            font-family: "Segoe UI", "Malgun Gothic";
+            font-size: 10pt;
+            color: #202938;
+        }
+        QMainWindow, QWidget#qt_scrollarea_viewport {
+            background: #F4F6FA;
+        }
+        QFrame#headerPanel, QFrame#surfacePanel, QFrame#tablePanel {
+            background: #FFFFFF;
+            border: 1px solid #E6EAF0;
+            border-radius: 12px;
+        }
+        QLabel#pageTitle {
+            color: #172033;
+            font-size: 23pt;
+            font-weight: 750;
+        }
+        QLabel#pageSubtitle {
+            color: #7A8495;
+            font-size: 9pt;
+        }
+        QLabel#fieldLabel {
+            color: #586477;
+            font-weight: 650;
+        }
+        QLabel#connectionBadge {
+            background: #FFF4E5;
+            color: #A15C00;
+            border: 1px solid #F6D7A8;
+            border-radius: 12px;
+            padding: 7px 12px;
+            font-weight: 650;
+        }
+        QLabel#connectionBadge[state="connected"] {
+            background: #EAF8F0;
+            color: #167647;
+            border-color: #C8EBD7;
+        }
+        QLabel#connectionBadge[state="disconnected"] {
+            background: #FFF0F0;
+            color: #B42318;
+            border-color: #F5CCCC;
+        }
+        QLineEdit, QDateEdit, QComboBox, QSpinBox {
+            background: #FFFFFF;
+            border: 1px solid #D9E0E9;
+            border-radius: 7px;
+            padding: 8px 10px;
+            min-height: 20px;
+            selection-background-color: #315EFB;
+        }
+        QLineEdit:focus, QDateEdit:focus, QComboBox:focus, QSpinBox:focus {
+            border: 1px solid #5578F5;
+        }
+        QCheckBox {
+            spacing: 7px;
+            color: #485467;
+        }
+        QPushButton {
+            background: #FFFFFF;
+            color: #344054;
+            border: 1px solid #D9E0E9;
+            border-radius: 7px;
+            padding: 8px 12px;
+            min-height: 22px;
+            font-weight: 600;
+        }
+        QPushButton:hover {
+            background: #F2F5FA;
+            border-color: #BFC9D8;
+        }
+        QPushButton:pressed {
+            background: #E8EDF5;
+        }
+        QPushButton#primaryButton {
+            background: #315EFB;
+            color: #FFFFFF;
+            border: 1px solid #315EFB;
+        }
+        QPushButton#primaryButton:hover {
+            background: #244DE0;
+        }
+        QPushButton#dangerButton {
+            color: #B42318;
+            background: #FFF8F7;
+            border-color: #F1D0CC;
+        }
+        QPushButton#dangerButton:hover {
+            background: #FDECEB;
+        }
+        QPushButton#successButton {
+            color: #167647;
+            background: #EFFAF3;
+            border-color: #C8EBD7;
+        }
+        QPushButton#successButton:hover {
+            background: #E1F5E9;
+        }
+        QTableWidget {
+            background: #FFFFFF;
+            alternate-background-color: #F8FAFD;
+            border: none;
+            border-radius: 8px;
+            color: #263244;
+            selection-background-color: #E7EEFF;
+            selection-color: #1E3A8A;
+        }
+        QHeaderView::section {
+            background: #F3F6FA;
+            color: #5B6678;
+            border: none;
+            border-bottom: 1px solid #E4E9F0;
+            padding: 10px 8px;
+            font-weight: 700;
+        }
+        QTableWidget::item {
+            padding: 7px;
+            border-bottom: 1px solid #EEF1F5;
+        }
+        QStatusBar {
+            background: transparent;
+            color: #7A8495;
+            border: none;
+        }
+        QDialog {
+            background: #F7F8FB;
+        }
+        QMessageBox {
+            background: #FFFFFF;
+        }
+    """)
+    w = MainWindow()
+    w.show()
     sys.exit(app.exec())
 
 if __name__ == "__main__":
