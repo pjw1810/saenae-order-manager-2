@@ -136,22 +136,23 @@ def create_api():
     @api.post("/api/orders")
     def add_order():
         d = request.get_json(force=True)
-        required = ["item_no", "item_name", "quantity", "due_date", "vendor", "order_date"]
-        if any(not str(d.get(k, "")).strip() for k in required):
-            return jsonify({"error": "필수 항목을 모두 입력해주세요."}), 400
+        # All order fields are optional. Validate only values the user supplied.
+        qty_text = str(d.get("quantity", "")).strip()
+        due_date = str(d.get("due_date", "")).strip()
+        order_date = str(d.get("order_date", "")).strip()
         try:
-            qty = int(d["quantity"])
-            if qty <= 0: raise ValueError()
-            datetime.strptime(d["due_date"], "%Y-%m-%d")
-            datetime.strptime(d["order_date"], "%Y-%m-%d")
+            qty = int(qty_text) if qty_text else ""
+            if qty_text and qty <= 0: raise ValueError()
+            if due_date: datetime.strptime(due_date, "%Y-%m-%d")
+            if order_date: datetime.strptime(order_date, "%Y-%m-%d")
         except Exception:
-            return jsonify({"error": "수량 또는 날짜 형식이 올바르지 않습니다."}), 400
+            return jsonify({"error": "수량은 양의 정수, 날짜는 YYYY-MM-DD 형식으로 입력해주세요."}), 400
         with db_connect() as con:
             cur = con.execute("""INSERT INTO orders
             (item_no,item_name,quantity,due_date,vendor,order_date,status,updated_at)
             VALUES (?,?,?,?,?,?,?,?)""",
-            (d["item_no"].strip(), d["item_name"].strip(), qty, d["due_date"],
-             d["vendor"].strip(), d["order_date"], d.get("status", "진행중"),
+            (str(d.get("item_no", "")).strip(), str(d.get("item_name", "")).strip(), qty, due_date,
+             str(d.get("vendor", "")).strip(), order_date, d.get("status", "진행중"),
              datetime.now().isoformat(timespec="seconds")))
             con.commit()
             return jsonify({"id": cur.lastrowid})
@@ -159,21 +160,22 @@ def create_api():
     @api.put("/api/orders/<int:order_id>")
     def update_order(order_id):
         d = request.get_json(force=True)
-        required = ["item_no", "item_name", "quantity", "due_date", "vendor", "order_date"]
-        if any(not str(d.get(k, "")).strip() for k in required):
-            return jsonify({"error": "필수 항목을 모두 입력해주세요."}), 400
+        # All order fields are optional. Validate only values the user supplied.
+        qty_text = str(d.get("quantity", "")).strip()
+        due_date = str(d.get("due_date", "")).strip()
+        order_date = str(d.get("order_date", "")).strip()
         try:
-            qty = int(d["quantity"])
-            if qty <= 0: raise ValueError()
-            datetime.strptime(d["due_date"], "%Y-%m-%d")
-            datetime.strptime(d["order_date"], "%Y-%m-%d")
+            qty = int(qty_text) if qty_text else ""
+            if qty_text and qty <= 0: raise ValueError()
+            if due_date: datetime.strptime(due_date, "%Y-%m-%d")
+            if order_date: datetime.strptime(order_date, "%Y-%m-%d")
         except Exception:
-            return jsonify({"error": "수량 또는 날짜 형식이 올바르지 않습니다."}), 400
+            return jsonify({"error": "수량은 양의 정수, 날짜는 YYYY-MM-DD 형식으로 입력해주세요."}), 400
         with db_connect() as con:
             cur = con.execute("""UPDATE orders SET item_no=?,item_name=?,quantity=?,due_date=?,
             vendor=?,order_date=?,status=?,updated_at=? WHERE id=?""",
-            (d["item_no"].strip(), d["item_name"].strip(), qty, d["due_date"],
-             d["vendor"].strip(), d["order_date"], d.get("status", "진행중"),
+            (str(d.get("item_no", "")).strip(), str(d.get("item_name", "")).strip(), qty, due_date,
+             str(d.get("vendor", "")).strip(), order_date, d.get("status", "진행중"),
              datetime.now().isoformat(timespec="seconds"), order_id))
             con.commit()
             if cur.rowcount == 0: return jsonify({"error": "해당 발주를 찾을 수 없습니다."}), 404
@@ -212,17 +214,17 @@ class OrderDialog(QDialog):
         form = QFormLayout(self)
         self.item_no = QLineEdit()
         self.item_name = QLineEdit()
-        self.quantity = QSpinBox(); self.quantity.setRange(1, 100000000); self.quantity.setValue(1)
-        self.due_date = QDateEdit(); self.due_date.setCalendarPopup(True); self.due_date.setDisplayFormat("yyyy-MM-dd"); self.due_date.setDate(date.today())
+        self.quantity = QLineEdit(); self.quantity.setPlaceholderText("선택 입력")
+        self.due_date = QLineEdit(); self.due_date.setPlaceholderText("선택 입력 / YYYY-MM-DD")
         self.vendor = QLineEdit()
-        self.order_date = QDateEdit(); self.order_date.setCalendarPopup(True); self.order_date.setDisplayFormat("yyyy-MM-dd"); self.order_date.setDate(date.today())
+        self.order_date = QLineEdit(); self.order_date.setPlaceholderText("선택 입력 / YYYY-MM-DD")
         self.status = QComboBox(); self.status.addItems(["진행중", "완료"])
-        form.addRow("품번 *", self.item_no)
-        form.addRow("품명 *", self.item_name)
-        form.addRow("수량 *", self.quantity)
-        form.addRow("납기일 *", self.due_date)
-        form.addRow("거래처 *", self.vendor)
-        form.addRow("발주일 *", self.order_date)
+        form.addRow("품번", self.item_no)
+        form.addRow("품명", self.item_name)
+        form.addRow("수량", self.quantity)
+        form.addRow("납기일", self.due_date)
+        form.addRow("거래처", self.vendor)
+        form.addRow("발주일", self.order_date)
         form.addRow("상태", self.status)
         buttons = QHBoxLayout()
         ok = QPushButton("저장"); cancel = QPushButton("취소")
@@ -230,20 +232,21 @@ class OrderDialog(QDialog):
         buttons.addWidget(ok); buttons.addWidget(cancel)
         form.addRow(buttons)
         if row:
-            self.item_no.setText(row["item_no"]); self.item_name.setText(row["item_name"])
-            self.quantity.setValue(int(row["quantity"]))
-            self.due_date.setDate(datetime.strptime(row["due_date"], "%Y-%m-%d").date())
-            self.vendor.setText(row["vendor"])
-            self.order_date.setDate(datetime.strptime(row["order_date"], "%Y-%m-%d").date())
+            self.item_no.setText(str(row.get("item_no", "")))
+            self.item_name.setText(str(row.get("item_name", "")))
+            self.quantity.setText(str(row.get("quantity", "")))
+            self.due_date.setText(str(row.get("due_date", "")))
+            self.vendor.setText(str(row.get("vendor", "")))
+            self.order_date.setText(str(row.get("order_date", "")))
             self.status.setCurrentText(row.get("status", "진행중"))
     def data(self):
         return {
             "item_no": self.item_no.text().strip(),
             "item_name": self.item_name.text().strip(),
-            "quantity": self.quantity.value(),
-            "due_date": self.due_date.date().toString("yyyy-MM-dd"),
+            "quantity": self.quantity.text().strip(),
+            "due_date": self.due_date.text().strip(),
             "vendor": self.vendor.text().strip(),
-            "order_date": self.order_date.date().toString("yyyy-MM-dd"),
+            "order_date": self.order_date.text().strip(),
             "status": self.status.currentText()
         }
 
@@ -267,8 +270,8 @@ class RequestWorker(QRunnable):
             self.signals.failed.emit(str(exc))
 
 class MainWindow(QMainWindow):
-    headers = ["번호", "품번", "품명", "수량", "납기일", "거래처", "발주일", "상태"]
-    keys = ["id", "item_no", "item_name", "quantity", "due_date", "vendor", "order_date", "status"]
+    headers = ["품번", "품명", "수량", "납기일", "거래처", "발주일", "상태"]
+    keys = ["item_no", "item_name", "quantity", "due_date", "vendor", "order_date", "status"]
     def __init__(self):
         super().__init__()
         self.config = load_config()
@@ -302,10 +305,11 @@ class MainWindow(QMainWindow):
         add = QPushButton("＋ 발주 등록"); add.clicked.connect(self.add_order)
         edit = QPushButton("선택 항목 수정"); edit.clicked.connect(self.edit_order)
         delete = QPushButton("선택 항목 삭제"); delete.clicked.connect(self.delete_order)
+        delivered = QPushButton("납품 완료"); delivered.clicked.connect(self.mark_delivered)
         export = QPushButton("엑셀 내보내기"); export.clicked.connect(self.export_excel)
         refresh = QPushButton("새로고침"); refresh.clicked.connect(self.refresh)
         backup = QPushButton("백업하기"); backup.clicked.connect(self.manual_backup)
-        for w in [self.search, add, edit, delete, export, refresh, backup]: actions.addWidget(w)
+        for w in [self.search, add, edit, delete, delivered, export, refresh, backup]: actions.addWidget(w)
         root.addLayout(actions)
 
         self.filters = {}
@@ -419,16 +423,16 @@ class MainWindow(QMainWindow):
         self.table.setRowCount(0)
         for row in self.rows:
             i = self.table.rowCount(); self.table.insertRow(i)
-            values = [row["id"], row["item_no"], row["item_name"], row["quantity"],
-                      row["due_date"], row["vendor"], row["order_date"], row.get("status","진행중")]
+            values = [row.get("item_no", ""), row.get("item_name", ""), row.get("quantity", ""),
+                      row.get("due_date", ""), row.get("vendor", ""), row.get("order_date", ""), row.get("status","진행중")]
             for c, value in enumerate(values):
                 item = QTableWidgetItem(str(value))
                 item.setData(Qt.UserRole, row["id"])
-                if c in (0,3): item.setTextAlignment(Qt.AlignCenter)
+                if c == 2: item.setTextAlignment(Qt.AlignCenter)
                 self.table.setItem(i,c,item)
             if row.get("status") != "완료":
                 try:
-                    days = (datetime.strptime(row["due_date"], "%Y-%m-%d").date() - date.today()).days
+                    days = (datetime.strptime(row["due_date"], "%Y-%m-%d").date() - date.today()).days if row.get("due_date") else 99999
                     color = None
                     if days <= 1: color = "#ffd6d6"
                     elif days <= 3: color = "#ffe7c2"
@@ -443,9 +447,10 @@ class MainWindow(QMainWindow):
         text = self.search.text().strip().lower() if hasattr(self, "search") else ""
         filters = {k:v.text().strip().lower() for k,v in self.filters.items()} if hasattr(self,"filters") else {}
         for i in range(self.table.rowCount()):
-            values = {k:self.table.item(i, idx+1).text().lower() for idx,k in enumerate(["item_no","item_name"])}
-            values["vendor"] = self.table.item(i,5).text().lower()
-            values["status"] = self.table.item(i,7).text().lower()
+            values = {"item_no": self.table.item(i,0).text().lower(),
+                      "item_name": self.table.item(i,1).text().lower(),
+                      "vendor": self.table.item(i,4).text().lower(),
+                      "status": self.table.item(i,6).text().lower()}
             visible = not text or any(text in self.table.item(i,c).text().lower() for c in range(self.table.columnCount()))
             for k, val in filters.items():
                 if val and val not in values.get(k,""): visible = False
@@ -459,8 +464,6 @@ class MainWindow(QMainWindow):
         dlg = OrderDialog(self)
         if dlg.exec() == QDialog.Accepted:
             data = dlg.data()
-            if not all(str(data[k]).strip() for k in ["item_no","item_name","vendor"]):
-                QMessageBox.warning(self,"입력 확인","품번, 품명, 거래처를 입력해주세요."); return
             try:
                 r = self.request("POST","/api/orders",json=data)
                 if r.status_code >= 400: raise Exception(r.json().get("error","등록 실패"))
@@ -479,6 +482,25 @@ class MainWindow(QMainWindow):
                 if r.status_code >= 400: raise Exception(r.json().get("error","수정 실패"))
                 self.refresh()
             except Exception as e: QMessageBox.critical(self,"수정 실패",str(e))
+
+    def mark_delivered(self):
+        oid = self.selected_id()
+        if not oid:
+            QMessageBox.information(self, "선택 필요", "납품 완료 처리할 발주를 선택해주세요.")
+            return
+        answer = QMessageBox.question(
+            self, "납품 완료", "선택한 품목을 납품 완료 처리하고 발주 내역에서 삭제할까요?",
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.No
+        )
+        if answer != QMessageBox.Yes:
+            return
+        try:
+            r = self.request("DELETE", f"/api/orders/{oid}")
+            if r.status_code >= 400:
+                raise Exception(r.json().get("error", "납품 완료 처리 실패"))
+            self.refresh()
+        except Exception as e:
+            QMessageBox.critical(self, "납품 완료 실패", str(e))
 
     def delete_order(self):
         oid = self.selected_id()
