@@ -39,9 +39,19 @@ jobs:
           choco install nsis --no-progress -y
 
       - name: Build Setup.exe
-        shell: pwsh
-        run: |
-          & "$env:ProgramFiles(x86)\\NSIS\\makensis.exe" installer.nsi
+  shell: pwsh
+  run: |
+    $nsis = "${env:ProgramFiles(x86)}\NSIS\makensis.exe"
+
+    if (!(Test-Path $nsis)) {
+      $nsis = "$env:ProgramFiles\NSIS\makensis.exe"
+    }
+
+    if (!(Test-Path $nsis)) {
+      $nsis = (Get-Command makensis.exe -ErrorAction Stop).Source
+    }
+
+    & $nsis installer.nsi
           if (!(Test-Path "SaenaeOrderManager_Setup.exe")) { throw "Installer was not created" }
 
       - name: Upload build artifacts
