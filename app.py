@@ -2,6 +2,7 @@ import sys, os, json, sqlite3, threading, socket
 from pathlib import Path
 from datetime import date, datetime, timedelta
 import shutil
+import threading
 import uuid
 from flask import Flask, request, jsonify
 from werkzeug.serving import make_server
@@ -24,6 +25,7 @@ CONFIG_PATH = BASE_DIR / "config.json"
 DB_PATH = BASE_DIR / "orders.sqlite3"
 BACKUP_DIR = BASE_DIR / "backups"
 BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+BACKUP_LOCK = threading.Lock()
 
 DEFAULT_CONFIG = {"server_mode": False, "server_host": "127.0.0.1", "port": PORT, "auto_start": False}
 
@@ -61,33 +63,44 @@ def db_connect():
     return con
 
 def backup_database():
-    """Create a consistent SQLite snapshot and retain the latest 30 daily files."""
+    """Create a consistent SQLite snapshot; close both DB handles before rename."""
     BACKUP_DIR.mkdir(parents=True, exist_ok=True)
-    # Use a unique filename for every backup. This avoids Windows file-lock
-    # collisions when two app instances or backup triggers run at the same time.
-    stamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-    token = uuid.uuid4().hex[:8]
-    target = BACKUP_DIR / f"orders_{stamp}_{token}.sqlite3"
-    temp = BACKUP_DIR / f"orders_{stamp}_{token}.sqlite3.tmp"
-    try:
-        with sqlite3.connect(DB_PATH, timeout=15) as source:
-            with sqlite3.connect(temp) as destination:
-                source.backup(destination)
-        temp.replace(target)
-        cutoff = datetime.now() - timedelta(days=30)
-        for old in BACKUP_DIR.glob("orders_*.sqlite3"):
+    # Prevent the timer, manual backup, and shutdown backup from overlapping.
+    with BACKUP_LOCK:
+        stamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+        target = BACKUP_DIR / f"orders_{stamp}.sqlite3"
+        temp = BACKUP_DIR / f"orders_{stamp}.tmp.sqlite3"
+        source = None
+        destination = None
+        try:
+            # sqlite3.Connection's `with` statement commits/rolls back but does
+            # NOT close the handle. Explicit close is required on Windows before rename.
+            source = sqlite3.connect(DB_PATH, timeout=30)
+            destination = sqlite3.connect(temp, timeout=30)
+            source.backup(destination)
+            destination.commit()
+        finally:
+            if destination is not None:
+                destination.close()
+            if source is not None:
+                source.close()
+        try:
+            # Both SQLite handles are now closed, so Windows can rename the file.
+            temp.replace(target)
+            cutoff = datetime.now() - timedelta(days=30)
+            for old in BACKUP_DIR.glob("orders_*.sqlite3"):
+                try:
+                    if old != target and datetime.fromtimestamp(old.stat().st_mtime) < cutoff:
+                        old.unlink()
+                except OSError:
+                    pass
+            return target
+        except Exception:
             try:
-                if datetime.fromtimestamp(old.stat().st_mtime) < cutoff:
-                    old.unlink()
+                temp.unlink(missing_ok=True)
             except OSError:
                 pass
-        return target
-    except Exception:
-        try:
-            temp.unlink(missing_ok=True)
-        except OSError:
-            pass
-        raise
+            raise
 
 def init_db():
     with db_connect() as con:
