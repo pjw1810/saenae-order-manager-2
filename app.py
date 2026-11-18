@@ -5,7 +5,7 @@ import shutil
 from flask import Flask, request, jsonify
 from werkzeug.serving import make_server
 import requests
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import Qt, QTimer, QObject, Signal, QRunnable, QThreadPool
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
     QLabel, QLineEdit, QPushButton, QTableWidget, QTableWidgetItem, QMessageBox,
@@ -229,6 +229,25 @@ class OrderDialog(QDialog):
             "status": self.status.currentText()
         }
 
+class WorkerSignals(QObject):
+    finished = Signal(object)
+    failed = Signal(str)
+
+class RequestWorker(QRunnable):
+    """Run HTTP requests outside the GUI thread."""
+    def __init__(self, method, url, kwargs=None):
+        super().__init__()
+        self.method, self.url, self.kwargs = method, url, kwargs or {}
+        self.signals = WorkerSignals()
+
+    def run(self):
+        try:
+            response = requests.request(self.method, self.url, timeout=(2, 3), **self.kwargs)
+            response.raise_for_status()
+            self.signals.finished.emit(response.json() if response.content else {})
+        except Exception as exc:
+            self.signals.failed.emit(str(exc))
+
 class MainWindow(QMainWindow):
     headers = ["번호", "품번", "품명", "수량", "납기일", "거래처", "발주일", "상태"]
     keys = ["id", "item_no", "item_name", "quantity", "due_date", "vendor", "order_date", "status"]
@@ -292,7 +311,10 @@ class MainWindow(QMainWindow):
         root.addWidget(self.table)
 
         self.statusbar = self.statusBar()
-        self.timer = QTimer(self); self.timer.timeout.connect(self.refresh); self.timer.start(2500)
+        self.thread_pool = QThreadPool.globalInstance()
+        self._polling = False
+        self._last_data_signature = None
+        self.timer = QTimer(self); self.timer.timeout.connect(self.refresh); self.timer.start(5000)
         self.backup_timer = QTimer(self); self.backup_timer.timeout.connect(self.maybe_daily_backup); self.backup_timer.start(60000)
         self.last_daily_backup = None
         self.rows = []
@@ -344,21 +366,35 @@ class MainWindow(QMainWindow):
         self.refresh()
 
     def request(self, method, path, **kwargs):
-        return requests.request(method, self.base_url()+path, timeout=4, **kwargs)
+        # Kept for short user-initiated operations; background polling uses RequestWorker.
+        return requests.request(method, self.base_url()+path, timeout=(2, 3), **kwargs)
 
     def refresh(self):
-        try:
-            r = self.request("GET", "/api/orders")
-            r.raise_for_status()
-            self.rows = r.json()
-            self.connection.setText("● 연결됨")
-            self.connection.setStyleSheet("color:#16803c;font-weight:600")
+        # Never perform network I/O on the GUI thread. Also prevent overlapping polls.
+        if self._polling:
+            return
+        self._polling = True
+        worker = RequestWorker("GET", self.base_url()+"/api/orders")
+        worker.signals.finished.connect(self._on_refresh_success)
+        worker.signals.failed.connect(self._on_refresh_failed)
+        self.thread_pool.start(worker)
+
+    def _on_refresh_success(self, rows):
+        self._polling = False
+        signature = json.dumps(rows, ensure_ascii=False, sort_keys=True)
+        self.connection.setText("● 연결됨")
+        self.connection.setStyleSheet("color:#16803c;font-weight:600")
+        if signature != self._last_data_signature:
+            self._last_data_signature = signature
+            self.rows = rows
             self.render()
-            self.statusbar.showMessage(f"총 {len(self.rows)}건 | 2.5초마다 자동 동기화")
-        except Exception:
-            self.connection.setText("● 서버 연결 안 됨")
-            self.connection.setStyleSheet("color:#c0392b;font-weight:600")
-            self.statusbar.showMessage(f"서버에 연결할 수 없습니다. 메인 PC 서버 실행 및 IP/방화벽을 확인하세요. ({self.base_url()})")
+        self.statusbar.showMessage(f"총 {len(rows)}건 | 5초마다 자동 동기화")
+
+    def _on_refresh_failed(self, error):
+        self._polling = False
+        self.connection.setText("● 서버 연결 안 됨")
+        self.connection.setStyleSheet("color:#c0392b;font-weight:600")
+        self.statusbar.showMessage(f"서버 연결 실패: {error} ({self.base_url()})")
 
     def render(self):
         self.table.setSortingEnabled(False)
