@@ -7,7 +7,8 @@ import uuid
 from flask import Flask, request, jsonify
 from werkzeug.serving import make_server
 import requests
-from PySide6.QtCore import Qt, QTimer, QObject, Signal, QRunnable, QThreadPool, QDate
+from PySide6.QtCore import Qt, QTimer, QObject, Signal, QRunnable, QThreadPool, QDate, QRegularExpression
+from PySide6.QtGui import QRegularExpressionValidator
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
     QLabel, QLineEdit, QPushButton, QTableWidget, QTableWidgetItem, QMessageBox,
@@ -17,7 +18,7 @@ from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment
 from openpyxl.utils import get_column_letter
 
-APP_NAME = "발주 관리"
+APP_NAME = "Order Manager"
 PORT = 8765
 BASE_DIR = Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "SaenaeOrderManager"
 BASE_DIR.mkdir(parents=True, exist_ok=True)
@@ -181,6 +182,41 @@ def create_api():
             if cur.rowcount == 0: return jsonify({"error": "해당 발주를 찾을 수 없습니다."}), 404
         return jsonify({"ok": True})
 
+    @api.post("/api/orders/<int:order_id>/deliver")
+    def deliver_order(order_id):
+        d = request.get_json(force=True) or {}
+        raw = str(d.get("quantity", "")).replace(",", "").strip()
+        if not raw.isdigit() or int(raw) <= 0:
+            return jsonify({"error": "납품 수량은 0보다 큰 양의 정수로 입력해주세요."}), 400
+        delivered_qty = int(raw)
+        try:
+            with db_connect() as con:
+                con.execute("BEGIN IMMEDIATE")
+                row = con.execute("SELECT quantity FROM orders WHERE id=?", (order_id,)).fetchone()
+                if row is None:
+                    con.rollback()
+                    return jsonify({"error": "해당 발주를 찾을 수 없습니다."}), 404
+                try:
+                    current_qty = int(row[0])
+                except (TypeError, ValueError):
+                    con.rollback()
+                    return jsonify({"error": "기존 발주 수량이 숫자가 아니므로 납품 처리할 수 없습니다."}), 400
+                if current_qty <= 0:
+                    con.rollback()
+                    return jsonify({"error": "기존 발주 수량이 0 이하이므로 납품 처리할 수 없습니다."}), 400
+                if delivered_qty >= current_qty:
+                    con.execute("DELETE FROM orders WHERE id=?", (order_id,))
+                    result, remaining = "deleted", 0
+                else:
+                    remaining = current_qty - delivered_qty
+                    con.execute("UPDATE orders SET quantity=?, updated_at=? WHERE id=?",
+                                (remaining, datetime.now().isoformat(timespec="seconds"), order_id))
+                    result = "updated"
+                con.commit()
+            return jsonify({"ok": True, "result": result, "remaining": remaining})
+        except sqlite3.Error as exc:
+            return jsonify({"error": f"데이터베이스 처리 실패: {exc}"}), 500
+
     @api.delete("/api/orders/<int:order_id>")
     def delete_order(order_id):
         with db_connect() as con:
@@ -256,6 +292,47 @@ class OrderDialog(QDialog):
             "order_date": "" if self.order_date.date() == self.order_date.minimumDate() else self.order_date.date().toString("yyyy-MM-dd"),
             "status": self.status.currentText()
         }
+
+class DeliveryDialog(QDialog):
+    def __init__(self, current_quantity, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("납품 수량 입력")
+        self.setMinimumWidth(340)
+        self.current_quantity = int(current_quantity)
+        form = QFormLayout(self)
+        form.addRow("현재 발주 수량", QLabel(f"{self.current_quantity:,}개"))
+        self.quantity = QLineEdit()
+        self.quantity.setPlaceholderText("실제 납품한 수량 입력")
+        self.quantity.setValidator(QRegularExpressionValidator(QRegularExpression(r"[0-9,]*"), self.quantity))
+        form.addRow("실제 납품 수량", self.quantity)
+        hint = QLabel("현재 발주 수량보다 크게 입력하면 전량 납품 완료 처리됩니다.")
+        hint.setWordWrap(True)
+        hint.setStyleSheet("color: #7A8495;")
+        form.addRow(hint)
+        buttons = QHBoxLayout()
+        ok, cancel = QPushButton("납품 처리"), QPushButton("취소")
+        ok.clicked.connect(self._accept_if_valid)
+        cancel.clicked.connect(self.reject)
+        buttons.addWidget(ok)
+        buttons.addWidget(cancel)
+        form.addRow(buttons)
+        self.quantity.editingFinished.connect(self._format_quantity)
+
+    def _format_quantity(self):
+        raw = self.quantity.text().replace(",", "").strip()
+        if raw.isdigit() and raw:
+            self.quantity.setText(f"{int(raw):,}")
+
+    def _accept_if_valid(self):
+        raw = self.quantity.text().replace(",", "").strip()
+        if not raw or not raw.isdigit() or int(raw) <= 0:
+            QMessageBox.warning(self, "입력 확인", "납품 수량은 0보다 큰 양의 정수로 입력해주세요.")
+            return
+        self.accept()
+
+    def value(self):
+        return int(self.quantity.text().replace(",", "").strip())
+
 
 class WorkerSignals(QObject):
     finished = Signal(object)
@@ -423,11 +500,13 @@ class MainWindow(QMainWindow):
         self.table.setSelectionBehavior(QTableWidget.SelectRows)
         self.table.setSelectionMode(QTableWidget.SingleSelection)
         self.table.setEditTriggers(QTableWidget.NoEditTriggers)
-        self.table.setShowGrid(False)
+        self.table.setShowGrid(True)
+        self.table.setGridStyle(Qt.SolidLine)
         self.table.verticalHeader().setVisible(False)
         self.table.verticalHeader().setDefaultSectionSize(42)
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         self.table.horizontalHeader().setMinimumHeight(42)
+        self.table.horizontalHeader().setDefaultAlignment(Qt.AlignCenter)
         self.table.doubleClicked.connect(self.edit_order)
         table_layout.addWidget(self.table)
         root.addWidget(table_panel, 1)
@@ -527,12 +606,17 @@ class MainWindow(QMainWindow):
         self.table.setRowCount(0)
         for row in self.rows:
             i = self.table.rowCount(); self.table.insertRow(i)
-            values = [row.get("item_no", ""), row.get("item_name", ""), row.get("quantity", ""),
+            raw_quantity = row.get("quantity", "")
+            try:
+                quantity_text = f"{int(raw_quantity):,}" if str(raw_quantity).strip() else ""
+            except (TypeError, ValueError):
+                quantity_text = str(raw_quantity)
+            values = [row.get("item_no", ""), row.get("item_name", ""), quantity_text,
                       row.get("due_date", ""), row.get("vendor", ""), row.get("order_date", ""), row.get("status","진행중")]
             for c, value in enumerate(values):
                 item = QTableWidgetItem(str(value))
                 item.setData(Qt.UserRole, row["id"])
-                if c == 2: item.setTextAlignment(Qt.AlignCenter)
+                item.setTextAlignment(Qt.AlignCenter)
                 self.table.setItem(i,c,item)
             if row.get("status") != "완료":
                 try:
@@ -590,21 +674,36 @@ class MainWindow(QMainWindow):
     def mark_delivered(self):
         oid = self.selected_id()
         if not oid:
-            QMessageBox.information(self, "선택 필요", "납품 완료 처리할 발주를 선택해주세요.")
+            QMessageBox.information(self, "선택 필요", "납품 처리할 발주를 선택해주세요.")
             return
-        answer = QMessageBox.question(
-            self, "납품 완료", "선택한 품목을 납품 완료 처리하고 발주 내역에서 삭제할까요?",
-            QMessageBox.Yes | QMessageBox.No, QMessageBox.No
-        )
-        if answer != QMessageBox.Yes:
+        row = next((r for r in self.rows if r.get("id") == oid), None)
+        if not row:
+            QMessageBox.warning(self, "발주 확인", "선택한 발주 정보를 찾을 수 없습니다. 새로고침 후 다시 시도해주세요.")
             return
         try:
-            r = self.request("DELETE", f"/api/orders/{oid}")
-            if r.status_code >= 400:
-                raise Exception(r.json().get("error", "납품 완료 처리 실패"))
+            current_qty = int(row.get("quantity"))
+        except (TypeError, ValueError):
+            QMessageBox.warning(self, "수량 확인", "현재 발주 수량이 숫자가 아니므로 납품 처리할 수 없습니다.")
+            return
+        if current_qty <= 0:
+            QMessageBox.warning(self, "수량 확인", "현재 발주 수량이 0 이하이므로 납품 처리할 수 없습니다.")
+            return
+        dialog = DeliveryDialog(current_qty, self)
+        if dialog.exec() != QDialog.Accepted:
+            return
+        try:
+            response = self.request("POST", f"/api/orders/{oid}/deliver", json={"quantity": dialog.value()})
+            if response.status_code >= 400:
+                raise Exception(response.json().get("error", "납품 처리 실패"))
+            result = response.json()
+            if result.get("result") == "deleted":
+                QMessageBox.information(self, "납품 완료", "전량 납품 처리했습니다. 발주 내역에서 삭제되었습니다.")
+            else:
+                QMessageBox.information(self, "부분 납품 완료",
+                                        f"납품 처리했습니다. 남은 발주 수량: {result.get('remaining', 0):,}개")
             self.refresh()
         except Exception as e:
-            QMessageBox.critical(self, "납품 완료 실패", str(e))
+            QMessageBox.critical(self, "납품 처리 실패", str(e))
 
     def delete_order(self):
         oid = self.selected_id()
@@ -627,11 +726,22 @@ class MainWindow(QMainWindow):
         if not path: return
         wb = Workbook(); ws = wb.active; ws.title = "발주 내역"
         ws.append(self.headers)
-        for row in visible: ws.append(row)
+        for row in visible:
+            excel_row = list(row)
+            try:
+                excel_row[2] = int(str(excel_row[2]).replace(",", "").strip())
+            except (ValueError, TypeError):
+                pass
+            ws.append(excel_row)
+            if isinstance(excel_row[2], int):
+                ws.cell(row=ws.max_row, column=3).number_format = '#,##0'
         for cell in ws[1]:
             cell.font = Font(bold=True,color="FFFFFF")
             cell.fill = PatternFill("solid",fgColor="355C7D")
             cell.alignment = Alignment(horizontal="center")
+        for excel_row in ws.iter_rows(min_row=2):
+            for cell in excel_row:
+                cell.alignment = Alignment(horizontal="center", vertical="center")
         widths = [10,18,24,12,16,22,16,12]
         for idx,width in enumerate(widths,1): ws.column_dimensions[get_column_letter(idx)].width = width
         ws.freeze_panes = "A2"; ws.auto_filter.ref = ws.dimensions
@@ -764,6 +874,7 @@ def main():
             background: #E1F5E9;
         }
         QTableWidget {
+            gridline-color: #E7ECF2;
             background: #FFFFFF;
             alternate-background-color: #F8FAFD;
             border: none;
@@ -776,13 +887,14 @@ def main():
             background: #F3F6FA;
             color: #5B6678;
             border: none;
-            border-bottom: 1px solid #E4E9F0;
+            border-right: 1px solid #E5EAF1;
+            border-bottom: 1px solid #DCE3EC;
             padding: 10px 8px;
             font-weight: 700;
         }
         QTableWidget::item {
             padding: 7px;
-            border-bottom: 1px solid #EEF1F5;
+            border: none;
         }
         QStatusBar {
             background: transparent;
