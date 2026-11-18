@@ -2,6 +2,7 @@ import sys, os, json, sqlite3, threading, socket
 from pathlib import Path
 from datetime import date, datetime, timedelta
 import shutil
+import uuid
 from flask import Flask, request, jsonify
 from werkzeug.serving import make_server
 import requests
@@ -62,8 +63,12 @@ def db_connect():
 def backup_database():
     """Create a consistent SQLite snapshot and retain the latest 30 daily files."""
     BACKUP_DIR.mkdir(parents=True, exist_ok=True)
-    target = BACKUP_DIR / f"orders_{date.today():%Y%m%d}.sqlite3"
-    temp = target.with_suffix(".sqlite3.tmp")
+    # Use a unique filename for every backup. This avoids Windows file-lock
+    # collisions when two app instances or backup triggers run at the same time.
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+    token = uuid.uuid4().hex[:8]
+    target = BACKUP_DIR / f"orders_{stamp}_{token}.sqlite3"
+    temp = BACKUP_DIR / f"orders_{stamp}_{token}.sqlite3.tmp"
     try:
         with sqlite3.connect(DB_PATH, timeout=15) as source:
             with sqlite3.connect(temp) as destination:
