@@ -632,6 +632,7 @@ class MainWindow(QMainWindow):
 
     def check_updates(self):
         if getattr(self, "_update_check_running", False):
+            self.statusbar.showMessage("업데이트를 확인하고 있습니다...", 5000)
             return
         self._update_check_running = True
         self.update_button.setEnabled(False)
@@ -653,13 +654,16 @@ class MainWindow(QMainWindow):
             if answer == QMessageBox.Yes:
                 self.download_update()
         else:
+            message = f"현재 최신 버전입니다.\\n설치된 버전: v{APP_VERSION}"
             self.statusbar.showMessage(f"최신 버전입니다. (현재 v{APP_VERSION})", 10000)
+            QMessageBox.information(self, "업데이트 확인", message)
 
     def _on_update_error(self, error):
         self._update_check_running = False
         self.update_button.setEnabled(True)
         self.update_button.setText("업데이트 확인")
         self.statusbar.showMessage(f"업데이트 확인 실패: {error}", 15000)
+        QMessageBox.warning(self, "업데이트 확인 실패", f"GitHub에서 업데이트 정보를 가져오지 못했습니다.\\n\\n{error}")
 
     def download_update(self):
         if not getattr(self, "_available_release", None):
