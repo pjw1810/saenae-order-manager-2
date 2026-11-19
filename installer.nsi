@@ -1,11 +1,15 @@
+
 !include "MUI2.nsh"
+
 Name "Order Manager"
 OutFile "OrderManager_Setup.exe"
 InstallDir "$PROGRAMFILES64\OrderManager"
 RequestExecutionLevel admin
+
 !define MUI_ABORTWARNING
 !define MUI_ICON "app.ico"
 !define MUI_UNICON "app.ico"
+
 !insertmacro MUI_PAGE_DIRECTORY
 !insertmacro MUI_PAGE_INSTFILES
 !insertmacro MUI_UNPAGE_CONFIRM
@@ -15,22 +19,22 @@ RequestExecutionLevel admin
 Section "Install"
   SetOutPath "$INSTDIR"
   File /r "dist\SaenaeOrderManager\*.*"
-<<<<<<< HEAD
+
   CreateDirectory "$LOCALAPPDATA\SaenaeOrderManager"
   IfFileExists "$LOCALAPPDATA\SaenaeOrderManager\update_config.json" update_config_exists 0
+
   SetOutPath "$LOCALAPPDATA\SaenaeOrderManager"
   File /oname=update_config.json "update_config.json"
-  update_config_exists:
+
+update_config_exists:
   SetOutPath "$LOCALAPPDATA\SaenaeOrderManager"
   File "dist\Updater.exe"
+
   SetOutPath "$INSTDIR"
-=======
->>>>>>> ba80537ed0dae1c1203f0fc5c6307583059d2b9a
   CreateDirectory "$SMPROGRAMS\Order Manager"
   CreateShortcut "$SMPROGRAMS\Order Manager\Order Manager.lnk" "$INSTDIR\SaenaeOrderManager.exe"
   CreateShortcut "$DESKTOP\Order Manager.lnk" "$INSTDIR\SaenaeOrderManager.exe"
   WriteUninstaller "$INSTDIR\Uninstall.exe"
-  ; 기본 자동 실행은 앱 내부 설정에서 사용자가 선택하도록 둠
 SectionEnd
 
 Section "Uninstall"
