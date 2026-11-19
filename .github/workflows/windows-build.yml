@@ -140,10 +140,10 @@ jobs:
           retention-days: 30
 
       - name: Publish GitHub Release
-        if: startsWith(github.ref, 'refs/tags/v') || (github.ref == 'refs/heads/main' && github.event.head_commit.message == 'Publish v1.0.6 release')
+        if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0.6
+          tag_name: ${{ github.ref_name }}
           target_commitish: main
           generate_release_notes: true
           files: |
