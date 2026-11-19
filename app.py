@@ -32,7 +32,7 @@ from werkzeug.serving import make_server
 import requests
 from PySide6.QtCore import Qt, QTimer, QObject, Signal, QRunnable, QThreadPool, QDate, QRegularExpression
 from PySide6.QtGui import QBrush, QColor, QPalette, QRegularExpressionValidator
-from PySide6.QtWidgets import QStyledItemDelegate, QStyleOptionViewItem
+from PySide6.QtWidgets import QStyledItemDelegate, QStyleOptionViewItem, QStyle
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
     QLabel, QLineEdit, QPushButton, QTableWidget, QTableWidgetItem, QMessageBox,
@@ -472,18 +472,44 @@ class UpdateCheckWorker(QRunnable):
 
 
 class DueDateHighlightDelegate(QStyledItemDelegate):
-    """Force per-cell due-date colors through Qt's style option palette."""
+    """Paint table cells directly so the application QSS cannot cover row colors."""
     def paint(self, painter, option, index):
-        opt = QStyleOptionViewItem(option)
-        self.initStyleOption(opt, index)
+        painter.save()
+        selected = bool(option.state & QStyle.State_Selected)
+
         background = index.data(Qt.BackgroundRole)
-        if background is not None:
-            color = background.color() if isinstance(background, QBrush) else QColor(background)
-            if color.isValid():
-                opt.backgroundBrush = QBrush(color)
-                opt.palette.setBrush(QPalette.Base, QBrush(color))
-                opt.palette.setBrush(QPalette.AlternateBase, QBrush(color))
-        super().paint(painter, opt, index)
+        if selected:
+            painter.fillRect(option.rect, option.palette.brush(QPalette.Highlight))
+            text_color = option.palette.color(QPalette.HighlightedText)
+        else:
+            if isinstance(background, QBrush):
+                background_color = background.color()
+            elif background is not None:
+                background_color = QColor(background)
+            else:
+                background_color = option.palette.color(QPalette.Base)
+            if not background_color.isValid():
+                background_color = option.palette.color(QPalette.Base)
+            painter.fillRect(option.rect, background_color)
+
+            foreground = index.data(Qt.ForegroundRole)
+            if isinstance(foreground, QBrush):
+                text_color = foreground.color()
+            elif foreground is not None:
+                text_color = QColor(foreground)
+            else:
+                text_color = option.palette.color(QPalette.Text)
+
+        painter.setFont(option.font)
+        painter.setPen(text_color)
+        text = index.data(Qt.DisplayRole)
+        if text is not None:
+            painter.drawText(
+                option.rect.adjusted(8, 0, -8, 0),
+                Qt.AlignCenter | Qt.TextSingleLine,
+                str(text),
+            )
+        painter.restore()
 
 
 class MainWindow(QMainWindow):
