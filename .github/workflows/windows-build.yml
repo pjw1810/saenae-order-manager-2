@@ -57,9 +57,9 @@ jobs:
       - name: Build application and updater
         shell: pwsh
         run: |
-          python -m PyInstaller --noconfirm --clean --onedir --console --name SaenaeOrderManager --icon app.ico --collect-all PySide6 --collect-all flask --collect-all werkzeug --collect-all openpyxl --collect-all requests --add-data "update_config.json;." app.py
+          python -m PyInstaller --noconfirm --clean --onedir --windowed --name SaenaeOrderManager --icon app.ico --collect-all PySide6 --collect-all flask --collect-all werkzeug --collect-all openpyxl --collect-all requests --add-data "update_config.json;." app.py
           if ($LASTEXITCODE -ne 0) { throw "Application PyInstaller build failed: $LASTEXITCODE" }
-          python -m PyInstaller --noconfirm --clean --onefile --console --name Updater updater.py
+          python -m PyInstaller --noconfirm --clean --onefile --noconsole --name Updater updater.py
           if ($LASTEXITCODE -ne 0) { throw "Updater PyInstaller build failed: $LASTEXITCODE" }
           if (-not (Test-Path 'dist\SaenaeOrderManager\SaenaeOrderManager.exe')) { throw 'Application EXE missing after successful PyInstaller command' }
           if (-not (Test-Path 'dist\Updater.exe')) { throw 'Updater EXE missing after successful PyInstaller command' }
