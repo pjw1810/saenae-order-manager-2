@@ -1,0 +1,9 @@
+__pycache__/
+*.py[cod]
+/build/
+/dist/
+*.spec
+OrderManager_Setup.exe
+OrderManager_Update.zip
+OrderManager_Update.zip.sha256
+update-package/

@@ -1,0 +1,97 @@
+name: Build and release Order Manager
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Set version
+        shell: pwsh
+        run: |
+          if ($env:GITHUB_REF -like 'refs/tags/v*') {
+            $version = $env:GITHUB_REF_NAME.TrimStart('v')
+          } else {
+            $version = '1.0.0'
+          }
+          "APP_VERSION = `"$version`"" | Set-Content -Path version.py -Encoding utf8
+          "APP_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Install dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m pip install pyinstaller==6.11.1
+
+      - name: Build application and updater
+        shell: pwsh
+        run: |
+          python -m PyInstaller --noconfirm --clean --windowed --name SaenaeOrderManager --icon app.ico --collect-all PySide6 --collect-all flask --collect-all openpyxl --add-data "update_config.json;." app.py
+          python -m PyInstaller --noconfirm --clean --onefile --console --name Updater updater.py
+          if (-not (Test-Path 'dist\SaenaeOrderManager\SaenaeOrderManager.exe')) { throw 'Application EXE missing' }
+          if (-not (Test-Path 'dist\Updater.exe')) { throw 'Updater EXE missing' }
+
+      - name: Install NSIS
+        shell: pwsh
+        run: |
+          choco install nsis --no-progress -y --force
+          if ($LASTEXITCODE -ne 0) { throw "NSIS installation failed: $LASTEXITCODE" }
+          $makensis = Get-ChildItem "$env:ProgramFiles\NSIS" -Filter makensis.exe -Recurse -File -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $makensis) { throw 'makensis.exe not found' }
+          "NSIS_EXE=$($makensis.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Build Setup.exe
+        shell: pwsh
+        run: |
+          & $env:NSIS_EXE /V3 installer.nsi
+          if ($LASTEXITCODE -ne 0) { throw "NSIS build failed: $LASTEXITCODE" }
+          if (-not (Test-Path 'OrderManager_Setup.exe')) { throw 'Setup.exe missing' }
+
+      - name: Create update package and checksum
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path 'update-package\payload' | Out-Null
+          Copy-Item -Path 'dist\SaenaeOrderManager\*' -Destination 'update-package\payload' -Recurse -Force
+          Compress-Archive -Path 'update-package\payload' -DestinationPath 'OrderManager_Update.zip' -Force
+          $hash = (Get-FileHash 'OrderManager_Update.zip' -Algorithm SHA256).Hash.ToLower()
+          "$hash  OrderManager_Update.zip" | Set-Content 'OrderManager_Update.zip.sha256' -Encoding ascii
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: OrderManager-Windows-${{ env.APP_VERSION }}
+          path: |
+            OrderManager_Setup.exe
+            OrderManager_Update.zip
+            OrderManager_Update.zip.sha256
+            dist/Updater.exe
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            OrderManager_Setup.exe
+            OrderManager_Update.zip
+            OrderManager_Update.zip.sha256
