@@ -48,8 +48,10 @@ jobs:
       - name: Validate Python and configuration
         shell: pwsh
         run: |
-          python -m compileall -q app.py updater.py version.py
+          python -m compileall -q app.py updater.py version.py test_due_date_highlight.py
           if ($LASTEXITCODE -ne 0) { throw "Python syntax validation failed" }
+          python -m unittest -v test_due_date_highlight.py
+          if ($LASTEXITCODE -ne 0) { throw "Due-date highlight tests failed" }
           python -c "import yaml; yaml.safe_load(open('.github/workflows/windows-build.yml', encoding='utf-8'))"
           if ($LASTEXITCODE -ne 0) { throw "Workflow YAML parse failed" }
           python -c "import json; json.load(open('update_config.json', encoding='utf-8'))"
@@ -138,10 +140,10 @@ jobs:
           retention-days: 30
 
       - name: Publish GitHub Release
-        if: startsWith(github.ref, 'refs/tags/v') || (github.ref == 'refs/heads/main' && github.event.head_commit.message == 'Publish v1.0.3 release')
+        if: startsWith(github.ref, 'refs/tags/v') || (github.ref == 'refs/heads/main' && github.event.head_commit.message == 'Publish v1.0.4 release')
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0.3
+          tag_name: v1.0.4
           target_commitish: main
           generate_release_notes: true
           files: |
