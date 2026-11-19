@@ -305,12 +305,12 @@ class OrderDialog(QDialog):
             date_field.setDate(QDate.currentDate())
         self.vendor = QLineEdit()
         self.status = QComboBox(); self.status.addItems(["진행중", "완료"])
+        form.addRow("고객사", self.vendor)
         form.addRow("품번", self.item_no)
         form.addRow("품명", self.item_name)
         form.addRow("수량", self.quantity)
-        form.addRow("납기일", self.due_date)
-        form.addRow("거래처", self.vendor)
         form.addRow("발주일", self.order_date)
+        form.addRow("납기일", self.due_date)
         form.addRow("상태", self.status)
         buttons = QHBoxLayout()
         ok = QPushButton("저장"); cancel = QPushButton("취소")
@@ -451,8 +451,8 @@ class UpdateCheckWorker(QRunnable):
 
 
 class MainWindow(QMainWindow):
-    headers = ["품번", "품명", "수량", "납기일", "거래처", "발주일", "상태"]
-    keys = ["item_no", "item_name", "quantity", "due_date", "vendor", "order_date", "status"]
+    headers = ["고객사", "품번", "품명", "수량", "발주일", "납기일", "상태"]
+    keys = ["vendor", "item_no", "item_name", "quantity", "order_date", "due_date", "status"]
     def __init__(self):
         super().__init__()
         self.config = load_config()
@@ -526,7 +526,7 @@ class MainWindow(QMainWindow):
         actions.setSpacing(8)
 
         self.search = QLineEdit()
-        self.search.setPlaceholderText("⌕  품번, 품명, 거래처 등 전체 검색")
+        self.search.setPlaceholderText("⌕  고객사, 품번, 품명 등 전체 검색")
         self.search.setMinimumWidth(190)
         self.search.textChanged.connect(self.apply_filter)
 
@@ -577,7 +577,7 @@ class MainWindow(QMainWindow):
         filter_row.addWidget(filter_title)
 
         self.filters = {}
-        for key, label in [("item_no", "품번"), ("item_name", "품명"), ("vendor", "거래처"), ("status", "상태")]:
+        for key, label in [("vendor", "고객사"), ("item_no", "품번"), ("item_name", "품명"), ("status", "상태")]:
             field = QLineEdit()
             field.setPlaceholderText(f"{label} 필터")
             field.setMaximumWidth(170)
@@ -632,6 +632,7 @@ class MainWindow(QMainWindow):
 
     def check_updates(self):
         if getattr(self, "_update_check_running", False):
+            self.statusbar.showMessage("업데이트를 확인하고 있습니다...", 5000)
             return
         self._update_check_running = True
         self.update_button.setEnabled(False)
@@ -653,13 +654,16 @@ class MainWindow(QMainWindow):
             if answer == QMessageBox.Yes:
                 self.download_update()
         else:
+            message = f"현재 최신 버전입니다.\n설치된 버전: v{APP_VERSION}"
             self.statusbar.showMessage(f"최신 버전입니다. (현재 v{APP_VERSION})", 10000)
+            QMessageBox.information(self, "업데이트 확인", message)
 
     def _on_update_error(self, error):
         self._update_check_running = False
         self.update_button.setEnabled(True)
         self.update_button.setText("업데이트 확인")
         self.statusbar.showMessage(f"업데이트 확인 실패: {error}", 15000)
+        QMessageBox.warning(self, "업데이트 확인 실패", f"GitHub에서 업데이트 정보를 가져오지 못했습니다.\n\n{error}")
 
     def download_update(self):
         if not getattr(self, "_available_release", None):
@@ -794,8 +798,8 @@ class MainWindow(QMainWindow):
                 quantity_text = f"{int(raw_quantity):,}" if str(raw_quantity).strip() else ""
             except (TypeError, ValueError):
                 quantity_text = str(raw_quantity)
-            values = [row.get("item_no", ""), row.get("item_name", ""), quantity_text,
-                      row.get("due_date", ""), row.get("vendor", ""), row.get("order_date", ""), row.get("status","진행중")]
+            values = [row.get("vendor", ""), row.get("item_no", ""), row.get("item_name", ""), quantity_text,
+                      row.get("order_date", ""), row.get("due_date", ""), row.get("status","진행중")]
             for c, value in enumerate(values):
                 item = QTableWidgetItem(str(value))
                 item.setData(Qt.UserRole, row["id"])
@@ -807,6 +811,7 @@ class MainWindow(QMainWindow):
                     color = None
                     if days <= 1: color = "#ffd6d6"
                     elif days <= 3: color = "#ffe7c2"
+                    elif days <= 7: color = "#fff2bf"
                     if color:
                         for c in range(len(self.headers)):
                             self.table.item(i,c).setBackground(PatternBrush(color))
@@ -818,9 +823,9 @@ class MainWindow(QMainWindow):
         text = self.search.text().strip().lower() if hasattr(self, "search") else ""
         filters = {k:v.text().strip().lower() for k,v in self.filters.items()} if hasattr(self,"filters") else {}
         for i in range(self.table.rowCount()):
-            values = {"item_no": self.table.item(i,0).text().lower(),
-                      "item_name": self.table.item(i,1).text().lower(),
-                      "vendor": self.table.item(i,4).text().lower(),
+            values = {"vendor": self.table.item(i,0).text().lower(),
+                      "item_no": self.table.item(i,1).text().lower(),
+                      "item_name": self.table.item(i,2).text().lower(),
                       "status": self.table.item(i,6).text().lower()}
             visible = not text or any(text in self.table.item(i,c).text().lower() for c in range(self.table.columnCount()))
             for k, val in filters.items():
@@ -912,12 +917,12 @@ class MainWindow(QMainWindow):
         for row in visible:
             excel_row = list(row)
             try:
-                excel_row[2] = int(str(excel_row[2]).replace(",", "").strip())
+                excel_row[3] = int(str(excel_row[3]).replace(",", "").strip())
             except (ValueError, TypeError):
                 pass
             ws.append(excel_row)
-            if isinstance(excel_row[2], int):
-                ws.cell(row=ws.max_row, column=3).number_format = '#,##0'
+            if isinstance(excel_row[3], int):
+                ws.cell(row=ws.max_row, column=4).number_format = '#,##0'
         for cell in ws[1]:
             cell.font = Font(bold=True,color="FFFFFF")
             cell.fill = PatternFill("solid",fgColor="355C7D")
@@ -925,7 +930,7 @@ class MainWindow(QMainWindow):
         for excel_row in ws.iter_rows(min_row=2):
             for cell in excel_row:
                 cell.alignment = Alignment(horizontal="center", vertical="center")
-        widths = [10,18,24,12,16,22,16,12]
+        widths = [22,12,22,12,14,14,12]
         for idx,width in enumerate(widths,1): ws.column_dimensions[get_column_letter(idx)].width = width
         ws.freeze_panes = "A2"; ws.auto_filter.ref = ws.dimensions
         try:
