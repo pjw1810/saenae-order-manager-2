@@ -16,10 +16,10 @@ jobs:
     runs-on: windows-latest
     steps:
       - name: Checkout source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.11'
 
@@ -45,53 +45,52 @@ jobs:
         shell: pwsh
         run: |
           python -m PyInstaller --noconfirm --clean --windowed --name SaenaeOrderManager --icon app.ico --collect-all PySide6 --collect-all flask --collect-all openpyxl --add-data "update_config.json;." app.py
+          if ($LASTEXITCODE -ne 0) { throw "Application PyInstaller build failed: $LASTEXITCODE" }
           python -m PyInstaller --noconfirm --clean --onefile --console --name Updater updater.py
-          if (-not (Test-Path 'dist\SaenaeOrderManager\SaenaeOrderManager.exe')) { throw 'Application EXE missing' }
-          if (-not (Test-Path 'dist\Updater.exe')) { throw 'Updater EXE missing' }
+          if ($LASTEXITCODE -ne 0) { throw "Updater PyInstaller build failed: $LASTEXITCODE" }
+          if (-not (Test-Path 'dist\SaenaeOrderManager\SaenaeOrderManager.exe')) { throw 'Application EXE missing after successful PyInstaller command' }
+          if (-not (Test-Path 'dist\Updater.exe')) { throw 'Updater EXE missing after successful PyInstaller command' }
 
       - name: Install NSIS
         shell: pwsh
         run: |
           choco install nsis --no-progress -y --force
           if ($LASTEXITCODE -ne 0) { throw "NSIS installation failed: $LASTEXITCODE" }
-          $makensis = Get-ChildItem "$env:ProgramFiles\NSIS" -Filter makensis.exe -Recurse -File -ErrorAction SilentlyContinue | Select-Object -First 1
-          if (-not $makensis) { throw 'makensis.exe not found' }
-          "NSIS_EXE=$($makensis.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+          # NSIS may be installed under Program Files OR Program Files (x86).
+          $roots = @(
+            (Join-Path $env:ProgramFiles 'NSIS'),
+            (Join-Path ${env:ProgramFiles(x86)} 'NSIS'),
+            (Join-Path $env:ChocolateyInstall 'lib\nsis'),
+            (Join-Path $env:ChocolateyInstall 'bin')
+          ) | Where-Object { $_ -and (Test-Path $_) }
+
+          $makensisPath = $null
+          foreach ($root in $roots) {
+            $candidate = Join-Path $root 'makensis.exe'
+            if (Test-Path $candidate) {
+              $makensisPath = $candidate
+              break
+            }
+            $found = Get-ChildItem -Path $root -Filter 'makensis.exe' -Recurse -File -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($found) {
+              $makensisPath = $found.FullName
+              break
+            }
+          }
+
+          if (-not $makensisPath) {
+            $command = Get-Command 'makensis.exe' -ErrorAction SilentlyContinue
+            if ($command) { $makensisPath = $command.Source }
+          }
+          if (-not $makensisPath) {
+            Write-Host 'NSIS-related Chocolatey packages:'
+            choco list --local-only
+            throw 'NSIS installation completed but makensis.exe was not found in Program Files, Program Files (x86), Chocolatey lib, or PATH.'
+          }
+
+          "NSIS_EXE=$makensisPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          Write-Host "Using NSIS compiler: $makensisPath"
 
       - name: Build Setup.exe
         shell: pwsh
-        run: |
-          & $env:NSIS_EXE /V3 installer.nsi
-          if ($LASTEXITCODE -ne 0) { throw "NSIS build failed: $LASTEXITCODE" }
-          if (-not (Test-Path 'OrderManager_Setup.exe')) { throw 'Setup.exe missing' }
-
-      - name: Create update package and checksum
-        shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Force -Path 'update-package\payload' | Out-Null
-          Copy-Item -Path 'dist\SaenaeOrderManager\*' -Destination 'update-package\payload' -Recurse -Force
-          Compress-Archive -Path 'update-package\payload' -DestinationPath 'OrderManager_Update.zip' -Force
-          $hash = (Get-FileHash 'OrderManager_Update.zip' -Algorithm SHA256).Hash.ToLower()
-          "$hash  OrderManager_Update.zip" | Set-Content 'OrderManager_Update.zip.sha256' -Encoding ascii
-
-      - name: Upload build artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: OrderManager-Windows-${{ env.APP_VERSION }}
-          path: |
-            OrderManager_Setup.exe
-            OrderManager_Update.zip
-            OrderManager_Update.zip.sha256
-            dist/Updater.exe
-          if-no-files-found: error
-          retention-days: 30
-
-      - name: Publish GitHub Release
-        if: startsWith(github.ref, 'refs/tags/v')
-        uses: softprops/action-gh-release@v2
-        with:
-          generate_release_notes: true
-          files: |
-            OrderManager_Setup.exe
-            OrderManager_Update.zip
-            OrderManager_Update.zip.sha256
