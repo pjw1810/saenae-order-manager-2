@@ -4,7 +4,7 @@ name: Build and release Order Manager
 name: Build Order Manager installer
 >>>>>>> ba80537ed0dae1c1203f0fc5c6307583059d2b9a
 
-on:
+"on":
   workflow_dispatch:
   push:
     branches:
