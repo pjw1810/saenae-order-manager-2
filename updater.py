@@ -11,16 +11,62 @@ def configure_logging() -> Path:
     return path
 
 def wait_for_process(pid: int, timeout: int = 120) -> None:
-    if pid <= 0: return
+    """Wait for the GUI process to exit without sending it a signal.
+
+    On Windows, os.kill(pid, 0) is NOT a safe existence check: values other
+    than CTRL_C_EVENT/CTRL_BREAK_EVENT can terminate the target process.
+    Use the Win32 process synchronization API instead.
+    """
+    if pid <= 0:
+        return
+    if os.name == "nt":
+        import ctypes
+        from ctypes import wintypes
+
+        SYNCHRONIZE = 0x00100000
+        WAIT_OBJECT_0 = 0x00000000
+        WAIT_TIMEOUT = 0x00000102
+        WAIT_FAILED = 0xFFFFFFFF
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel32.OpenProcess.argtypes = (wintypes.DWORD, wintypes.BOOL, wintypes.DWORD)
+        kernel32.OpenProcess.restype = wintypes.HANDLE
+        kernel32.WaitForSingleObject.argtypes = (wintypes.HANDLE, wintypes.DWORD)
+        kernel32.WaitForSingleObject.restype = wintypes.DWORD
+        kernel32.CloseHandle.argtypes = (wintypes.HANDLE,)
+        kernel32.CloseHandle.restype = wintypes.BOOL
+
+        handle = kernel32.OpenProcess(SYNCHRONIZE, False, pid)
+        if not handle:
+            error = ctypes.get_last_error()
+            # ERROR_INVALID_PARAMETER means the process no longer exists.
+            if error == 87:
+                return
+            raise OSError(error, f"OpenProcess failed for PID {pid}")
+        try:
+            result = kernel32.WaitForSingleObject(handle, max(0, timeout) * 1000)
+            if result == WAIT_OBJECT_0:
+                return
+            if result == WAIT_TIMEOUT:
+                raise TimeoutError(f"프로그램 종료 대기 시간 초과 (PID {pid})")
+            if result == WAIT_FAILED:
+                raise ctypes.WinError(ctypes.get_last_error())
+            raise RuntimeError(f"알 수 없는 프로세스 대기 결과: {result}")
+        finally:
+            kernel32.CloseHandle(handle)
+        return
+
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
-        try: os.kill(pid, 0)
-        except ProcessLookupError: return
-        except PermissionError: pass
-        except OSError: return
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return
+        except PermissionError:
+            pass
+        except OSError:
+            return
         time.sleep(0.4)
     raise TimeoutError(f"프로그램 종료 대기 시간 초과 (PID {pid})")
-
 def sha256_file(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as stream:
