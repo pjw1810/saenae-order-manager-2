@@ -31,7 +31,7 @@ from flask import Flask, request, jsonify
 from werkzeug.serving import make_server
 import requests
 from PySide6.QtCore import Qt, QTimer, QObject, Signal, QRunnable, QThreadPool, QDate, QRegularExpression
-from PySide6.QtGui import QRegularExpressionValidator
+from PySide6.QtGui import QBrush, QColor, QRegularExpressionValidator
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
     QLabel, QLineEdit, QPushButton, QTableWidget, QTableWidgetItem, QMessageBox,
@@ -814,7 +814,7 @@ class MainWindow(QMainWindow):
                     elif days <= 7: color = "#fff2bf"
                     if color:
                         for c in range(len(self.headers)):
-                            self.table.item(i,c).setBackground(PatternBrush(color))
+                            self.table.item(i,c).setBackground(QBrush(QColor(color)))
                 except Exception: pass
         self.table.setSortingEnabled(True)
         self.apply_filter()
