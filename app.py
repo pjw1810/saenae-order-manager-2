@@ -42,6 +42,26 @@ from openpyxl.styles import Font, PatternFill, Alignment
 from openpyxl.utils import get_column_letter
 from version import APP_VERSION
 
+def due_date_highlight_color(due_date, status, today=None):
+    """Return a visible row color based on the due date; completed orders are never highlighted."""
+    if str(status or "").strip() == "완료":
+        return None
+    due_text = str(due_date or "").strip()
+    if not due_text:
+        return None
+    try:
+        due = datetime.strptime(due_text[:10], "%Y-%m-%d").date()
+    except (TypeError, ValueError):
+        return None
+    days = (due - (today or date.today())).days
+    if days <= 1:
+        return "#ffc2c2"
+    if days <= 3:
+        return "#ffdda8"
+    if days <= 7:
+        return "#fff0a6"
+    return None
+
 APP_NAME = "Order Manager"
 PORT = 8765
 BASE_DIR = Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "SaenaeOrderManager"
@@ -596,7 +616,7 @@ class MainWindow(QMainWindow):
 
         self.table = QTableWidget(0, len(self.headers))
         self.table.setHorizontalHeaderLabels(self.headers)
-        self.table.setAlternatingRowColors(True)
+        self.table.setAlternatingRowColors(False)
         self.table.setSortingEnabled(True)
         self.table.setSelectionBehavior(QTableWidget.SelectRows)
         self.table.setSelectionMode(QTableWidget.SingleSelection)
@@ -805,18 +825,16 @@ class MainWindow(QMainWindow):
                 item.setData(Qt.UserRole, row["id"])
                 item.setTextAlignment(Qt.AlignCenter)
                 self.table.setItem(i,c,item)
-            if row.get("status") != "완료":
-                try:
-                    days = (datetime.strptime(row["due_date"], "%Y-%m-%d").date() - date.today()).days if row.get("due_date") else 99999
-                    color = None
-                    if days <= 1: color = "#ffd6d6"
-                    elif days <= 3: color = "#ffe7c2"
-                    elif days <= 7: color = "#fff2bf"
-                    if color:
-                        for c in range(len(self.headers)):
-                            self.table.item(i,c).setBackground(QBrush(QColor(color)))
-                except Exception: pass
+            color = due_date_highlight_color(row.get("due_date"), row.get("status"))
+            if color:
+                brush = QBrush(QColor(color))
+                for c in range(len(self.headers)):
+                    cell = self.table.item(i, c)
+                    if cell is not None:
+                        cell.setBackground(brush)
+                        cell.setForeground(QBrush(QColor("#4a2525")))
         self.table.setSortingEnabled(True)
+        self.table.viewport().update()
         self.apply_filter()
 
     def apply_filter(self):
