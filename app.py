@@ -448,7 +448,7 @@ class UpdateCheckWorker(QRunnable):
                 remote_version = str(release.get("tag_name", "")).lstrip("vV")
                 if not remote_version:
                     raise RuntimeError("Release 태그에서 버전을 확인할 수 없습니다.")
-                self.signals.finished.emit({"version": remote_version, "package_url": package_url, "hash_url": hash_url, "html_url": release.get("html_url", "")})
+                self.signals.finished.emit({"version": remote_version, "package_url": package_url, "hash_url": hash_url, "html_url": release.get("html_url", ""), "notes": str(release.get("body", "") or "").strip()})
             elif self.operation == "download":
                 release = self.release
                 UPDATE_DIR.mkdir(parents=True, exist_ok=True)
@@ -615,7 +615,7 @@ class MainWindow(QMainWindow):
         backup.clicked.connect(self.manual_backup)
         self.update_button = QPushButton("업데이트 확인")
         self.update_button.setObjectName("secondaryButton")
-        self.update_button.clicked.connect(self.on_update_button_clicked)
+        self.update_button.clicked.connect(lambda: self.on_update_button_clicked(manual=True))
 
         actions.addWidget(self.search, 1)
         actions.addWidget(add)
@@ -684,20 +684,21 @@ class MainWindow(QMainWindow):
         self.last_daily_backup = None
         self.rows = []
         self.refresh()
-        QTimer.singleShot(2500, self.check_updates)
+        QTimer.singleShot(2500, lambda: self.check_updates(manual=False))
 
-    def on_update_button_clicked(self):
+    def on_update_button_clicked(self, manual=True):
         release = getattr(self, "_available_release", None)
         if release and version_tuple(release.get("version", "0")) > version_tuple(APP_VERSION):
             self.download_update()
         else:
-            self.check_updates()
+            self.check_updates(manual=manual)
 
-    def check_updates(self):
+    def check_updates(self, manual=False):
         if getattr(self, "_update_check_running", False):
             self.statusbar.showMessage("업데이트를 확인하고 있습니다...", 5000)
             return
         self._update_check_running = True
+        self._manual_update_check = bool(manual)
         self.update_button.setEnabled(False)
         self.update_button.setText("확인 중...")
         worker = UpdateCheckWorker("check")
@@ -712,21 +713,29 @@ class MainWindow(QMainWindow):
         self._available_release = release
         if version_tuple(release["version"]) > version_tuple(APP_VERSION):
             self.update_button.setText(f"업데이트 v{release['version']}")
-            self.statusbar.showMessage(f"새 버전 v{release['version']}을 사용할 수 있습니다. 업데이트 버튼을 눌러주세요.", 20000)
-            answer = QMessageBox.question(self, "업데이트 발견", f"새 버전 v{release['version']}이 있습니다.\n현재 버전: v{APP_VERSION}\n\n지금 업데이트할까요?", QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
+            self.statusbar.showMessage(f"새 업데이트 v{release['version']}가 등록되었습니다.", 20000)
+            notes = release.get("notes", "").strip() or "등록된 변경 사항이 없습니다."
+            prompt = (
+                f"새 업데이트 v{release['version']}가 등록되었습니다.\n\n"
+                f"변경 사항\n{notes}\n\n"
+                "지금 업데이트할까요?"
+            )
+            answer = QMessageBox.question(
+                self, "새 업데이트 알림", prompt,
+                QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes
+            )
             if answer == QMessageBox.Yes:
                 self.download_update()
         else:
-            message = f"현재 최신 버전입니다.\n설치된 버전: v{APP_VERSION}"
-            self.statusbar.showMessage(f"최신 버전입니다. (현재 v{APP_VERSION})", 10000)
-            QMessageBox.information(self, "업데이트 확인", message)
+            self.statusbar.showMessage("프로그램이 최신 상태입니다.", 5000)
 
     def _on_update_error(self, error):
         self._update_check_running = False
         self.update_button.setEnabled(True)
         self.update_button.setText("업데이트 확인")
         self.statusbar.showMessage(f"업데이트 확인 실패: {error}", 15000)
-        QMessageBox.warning(self, "업데이트 확인 실패", f"GitHub에서 업데이트 정보를 가져오지 못했습니다.\n\n{error}")
+        if getattr(self, "_manual_update_check", False):
+            QMessageBox.warning(self, "업데이트 확인 실패", f"GitHub에서 업데이트 정보를 가져오지 못했습니다.\n\n{error}")
 
     def download_update(self):
         if not getattr(self, "_available_release", None):
