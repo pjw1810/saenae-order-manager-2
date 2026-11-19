@@ -94,3 +94,41 @@ jobs:
 
       - name: Build Setup.exe
         shell: pwsh
+        run: |
+          if (-not $env:NSIS_EXE -or -not (Test-Path $env:NSIS_EXE)) {
+            throw "NSIS_EXE is missing or does not exist: '$env:NSIS_EXE'"
+          }
+          & $env:NSIS_EXE /V3 installer.nsi
+          if ($LASTEXITCODE -ne 0) { throw "NSIS build failed: $LASTEXITCODE" }
+          if (-not (Test-Path 'OrderManager_Setup.exe')) { throw 'Setup.exe missing after NSIS build' }
+
+      - name: Create update package and checksum
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path 'update-package\payload' | Out-Null
+          Copy-Item -Path 'dist\SaenaeOrderManager\*' -Destination 'update-package\payload' -Recurse -Force
+          Compress-Archive -Path 'update-package\payload' -DestinationPath 'OrderManager_Update.zip' -Force
+          $hash = (Get-FileHash 'OrderManager_Update.zip' -Algorithm SHA256).Hash.ToLower()
+          "$hash  OrderManager_Update.zip" | Set-Content 'OrderManager_Update.zip.sha256' -Encoding ascii
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: OrderManager-Windows-${{ env.APP_VERSION }}
+          path: |
+            OrderManager_Setup.exe
+            OrderManager_Update.zip
+            OrderManager_Update.zip.sha256
+            dist/Updater.exe
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            OrderManager_Setup.exe
+            OrderManager_Update.zip
+            OrderManager_Update.zip.sha256
