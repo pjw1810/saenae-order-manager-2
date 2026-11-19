@@ -526,7 +526,7 @@ class MainWindow(QMainWindow):
         actions.setSpacing(8)
 
         self.search = QLineEdit()
-        self.search.setPlaceholderText("⌕  품번, 품명, 거래처 등 전체 검색")
+        self.search.setPlaceholderText("⌕  고객사, 품번, 품명 등 전체 검색")
         self.search.setMinimumWidth(190)
         self.search.textChanged.connect(self.apply_filter)
 
