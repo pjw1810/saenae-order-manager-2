@@ -31,7 +31,8 @@ from flask import Flask, request, jsonify
 from werkzeug.serving import make_server
 import requests
 from PySide6.QtCore import Qt, QTimer, QObject, Signal, QRunnable, QThreadPool, QDate, QRegularExpression
-from PySide6.QtGui import QBrush, QColor, QRegularExpressionValidator
+from PySide6.QtGui import QBrush, QColor, QPalette, QRegularExpressionValidator
+from PySide6.QtWidgets import QStyledItemDelegate, QStyleOptionViewItem
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
     QLabel, QLineEdit, QPushButton, QTableWidget, QTableWidgetItem, QMessageBox,
@@ -470,6 +471,21 @@ class UpdateCheckWorker(QRunnable):
             self.signals.failed.emit(str(exc))
 
 
+class DueDateHighlightDelegate(QStyledItemDelegate):
+    """Force per-cell due-date colors through Qt's style option palette."""
+    def paint(self, painter, option, index):
+        opt = QStyleOptionViewItem(option)
+        self.initStyleOption(opt, index)
+        background = index.data(Qt.BackgroundRole)
+        if background is not None:
+            color = background.color() if isinstance(background, QBrush) else QColor(background)
+            if color.isValid():
+                opt.backgroundBrush = QBrush(color)
+                opt.palette.setBrush(QPalette.Base, QBrush(color))
+                opt.palette.setBrush(QPalette.AlternateBase, QBrush(color))
+        super().paint(painter, opt, index)
+
+
 class MainWindow(QMainWindow):
     headers = ["고객사", "품번", "품명", "수량", "발주일", "납기일", "상태"]
     keys = ["vendor", "item_no", "item_name", "quantity", "order_date", "due_date", "status"]
@@ -617,6 +633,7 @@ class MainWindow(QMainWindow):
         self.table = QTableWidget(0, len(self.headers))
         self.table.setHorizontalHeaderLabels(self.headers)
         self.table.setAlternatingRowColors(False)
+        self.table.setItemDelegate(DueDateHighlightDelegate(self.table))
         self.table.setSortingEnabled(True)
         self.table.setSelectionBehavior(QTableWidget.SelectRows)
         self.table.setSelectionMode(QTableWidget.SingleSelection)
@@ -826,6 +843,7 @@ class MainWindow(QMainWindow):
                 item.setTextAlignment(Qt.AlignCenter)
                 self.table.setItem(i,c,item)
             color = due_date_highlight_color(row.get("due_date"), row.get("status"))
+            _diag_logging.info("Due highlight row id=%s due_date=%r status=%r color=%r", row.get("id"), row.get("due_date"), row.get("status"), color)
             if color:
                 brush = QBrush(QColor(color))
                 for c in range(len(self.headers)):
