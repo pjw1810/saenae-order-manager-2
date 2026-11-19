@@ -4,10 +4,13 @@ from datetime import date, datetime, timedelta
 import shutil
 import threading
 import uuid
+<<<<<<< HEAD
 import hashlib
 import ctypes
 import shlex
 import subprocess
+=======
+>>>>>>> ba80537ed0dae1c1203f0fc5c6307583059d2b9a
 from flask import Flask, request, jsonify
 from werkzeug.serving import make_server
 import requests
@@ -21,7 +24,10 @@ from PySide6.QtWidgets import (
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment
 from openpyxl.utils import get_column_letter
+<<<<<<< HEAD
 from version import APP_VERSION
+=======
+>>>>>>> ba80537ed0dae1c1203f0fc5c6307583059d2b9a
 
 APP_NAME = "Order Manager"
 PORT = 8765
@@ -32,6 +38,7 @@ DB_PATH = BASE_DIR / "orders.sqlite3"
 BACKUP_DIR = BASE_DIR / "backups"
 BACKUP_DIR.mkdir(parents=True, exist_ok=True)
 BACKUP_LOCK = threading.Lock()
+<<<<<<< HEAD
 UPDATE_CONFIG_PATH = BASE_DIR / "update_config.json"
 UPDATE_DIR = BASE_DIR / "updates"
 
@@ -51,6 +58,8 @@ def version_tuple(value):
             break
         parts.append(int(digits))
     return tuple((parts + [0, 0, 0])[:3])
+=======
+>>>>>>> ba80537ed0dae1c1203f0fc5c6307583059d2b9a
 
 DEFAULT_CONFIG = {"server_mode": False, "server_host": "127.0.0.1", "port": PORT, "auto_start": False}
 
@@ -377,6 +386,7 @@ class RequestWorker(QRunnable):
         except Exception as exc:
             self.signals.failed.emit(str(exc))
 
+<<<<<<< HEAD
 class UpdateWorkerSignals(QObject):
     finished = Signal(object)
     failed = Signal(str)
@@ -431,6 +441,8 @@ class UpdateCheckWorker(QRunnable):
             self.signals.failed.emit(str(exc))
 
 
+=======
+>>>>>>> ba80537ed0dae1c1203f0fc5c6307583059d2b9a
 class MainWindow(QMainWindow):
     headers = ["품번", "품명", "수량", "납기일", "거래처", "발주일", "상태"]
     keys = ["item_no", "item_name", "quantity", "due_date", "vendor", "order_date", "status"]
@@ -532,9 +544,12 @@ class MainWindow(QMainWindow):
         backup = QPushButton("백업")
         backup.setObjectName("secondaryButton")
         backup.clicked.connect(self.manual_backup)
+<<<<<<< HEAD
         self.update_button = QPushButton("업데이트 확인")
         self.update_button.setObjectName("secondaryButton")
         self.update_button.clicked.connect(self.on_update_button_clicked)
+=======
+>>>>>>> ba80537ed0dae1c1203f0fc5c6307583059d2b9a
 
         actions.addWidget(self.search, 1)
         actions.addWidget(add)
@@ -544,7 +559,10 @@ class MainWindow(QMainWindow):
         actions.addWidget(export)
         actions.addWidget(refresh)
         actions.addWidget(backup)
+<<<<<<< HEAD
         actions.addWidget(self.update_button)
+=======
+>>>>>>> ba80537ed0dae1c1203f0fc5c6307583059d2b9a
         root.addWidget(actions_panel)
 
         # Compact filters
@@ -602,6 +620,7 @@ class MainWindow(QMainWindow):
         self.last_daily_backup = None
         self.rows = []
         self.refresh()
+<<<<<<< HEAD
         QTimer.singleShot(2500, self.check_updates)
 
     def on_update_button_clicked(self):
@@ -684,6 +703,8 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "업데이트 실행 실패", str(exc))
             self.update_button.setEnabled(True)
             self.update_button.setText("업데이트 확인")
+=======
+>>>>>>> ba80537ed0dae1c1203f0fc5c6307583059d2b9a
 
     def manual_backup(self):
         if not self.config.get("server_mode"):

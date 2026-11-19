@@ -15,6 +15,7 @@ RequestExecutionLevel admin
 Section "Install"
   SetOutPath "$INSTDIR"
   File /r "dist\SaenaeOrderManager\*.*"
+<<<<<<< HEAD
   CreateDirectory "$LOCALAPPDATA\SaenaeOrderManager"
   IfFileExists "$LOCALAPPDATA\SaenaeOrderManager\update_config.json" update_config_exists 0
   SetOutPath "$LOCALAPPDATA\SaenaeOrderManager"
@@ -23,6 +24,8 @@ Section "Install"
   SetOutPath "$LOCALAPPDATA\SaenaeOrderManager"
   File "dist\Updater.exe"
   SetOutPath "$INSTDIR"
+=======
+>>>>>>> ba80537ed0dae1c1203f0fc5c6307583059d2b9a
   CreateDirectory "$SMPROGRAMS\Order Manager"
   CreateShortcut "$SMPROGRAMS\Order Manager\Order Manager.lnk" "$INSTDIR\SaenaeOrderManager.exe"
   CreateShortcut "$DESKTOP\Order Manager.lnk" "$INSTDIR\SaenaeOrderManager.exe"

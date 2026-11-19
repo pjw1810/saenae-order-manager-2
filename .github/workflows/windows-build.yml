@@ -1,15 +1,25 @@
+<<<<<<< HEAD
 name: Build and release Order Manager
+=======
+name: Build Order Manager installer
+>>>>>>> ba80537ed0dae1c1203f0fc5c6307583059d2b9a
 
 on:
   workflow_dispatch:
   push:
     branches:
       - main
+<<<<<<< HEAD
     tags:
       - 'v*'
 
 permissions:
   contents: write
+=======
+
+permissions:
+  contents: read
+>>>>>>> ba80537ed0dae1c1203f0fc5c6307583059d2b9a
 
 jobs:
   build:
@@ -21,6 +31,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
+<<<<<<< HEAD
           python-version: '3.11'
 
       - name: Set version
@@ -33,6 +44,9 @@ jobs:
           }
           "APP_VERSION = `"$version`"" | Set-Content -Path version.py -Encoding utf8
           "APP_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+=======
+          python-version: "3.11"
+>>>>>>> ba80537ed0dae1c1203f0fc5c6307583059d2b9a
 
       - name: Install dependencies
         shell: pwsh
@@ -41,6 +55,7 @@ jobs:
           python -m pip install -r requirements.txt
           python -m pip install pyinstaller==6.11.1
 
+<<<<<<< HEAD
       - name: Build application and updater
         shell: pwsh
         run: |
@@ -48,19 +63,66 @@ jobs:
           python -m PyInstaller --noconfirm --clean --onefile --console --name Updater updater.py
           if (-not (Test-Path 'dist\SaenaeOrderManager\SaenaeOrderManager.exe')) { throw 'Application EXE missing' }
           if (-not (Test-Path 'dist\Updater.exe')) { throw 'Updater EXE missing' }
+=======
+      - name: Build application
+        shell: pwsh
+        run: |
+          python -m PyInstaller --noconfirm --clean --windowed --name SaenaeOrderManager --icon app.ico --collect-all PySide6 --collect-all flask --collect-all openpyxl app.py
+>>>>>>> ba80537ed0dae1c1203f0fc5c6307583059d2b9a
 
       - name: Install NSIS
         shell: pwsh
         run: |
           choco install nsis --no-progress -y --force
+<<<<<<< HEAD
           if ($LASTEXITCODE -ne 0) { throw "NSIS installation failed: $LASTEXITCODE" }
           $makensis = Get-ChildItem "$env:ProgramFiles\NSIS" -Filter makensis.exe -Recurse -File -ErrorAction SilentlyContinue | Select-Object -First 1
           if (-not $makensis) { throw 'makensis.exe not found' }
           "NSIS_EXE=$($makensis.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+=======
+          if ($LASTEXITCODE -ne 0) {
+            throw "Chocolatey could not install NSIS (exit code $LASTEXITCODE)."
+          }
+
+          $roots = @(
+            "$env:ProgramFiles\NSIS",
+            "${env:ProgramFiles(x86)}\NSIS",
+            "$env:ChocolateyInstall\lib\nsis",
+            "$env:ChocolateyInstall\bin"
+          ) | Where-Object { $_ -and (Test-Path $_) }
+
+          $makensis = $null
+          foreach ($root in $roots) {
+            $candidate = Join-Path $root "makensis.exe"
+            if (Test-Path $candidate) {
+              $makensis = $candidate
+              break
+            }
+            $found = Get-ChildItem -Path $root -Filter makensis.exe -Recurse -File -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($found) {
+              $makensis = $found.FullName
+              break
+            }
+          }
+
+          if (-not $makensis) {
+            $cmd = Get-Command makensis.exe -ErrorAction SilentlyContinue
+            if ($cmd) { $makensis = $cmd.Source }
+          }
+
+          if (-not $makensis) {
+            choco list
+            throw "NSIS installation finished, but makensis.exe was not found. Check the NSIS install log above."
+          }
+
+          "NSIS_EXE=$makensis" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          Write-Host "NSIS found: $makensis"
+>>>>>>> ba80537ed0dae1c1203f0fc5c6307583059d2b9a
 
       - name: Build Setup.exe
         shell: pwsh
         run: |
+<<<<<<< HEAD
           & $env:NSIS_EXE /V3 installer.nsi
           if ($LASTEXITCODE -ne 0) { throw "NSIS build failed: $LASTEXITCODE" }
           if (-not (Test-Path 'OrderManager_Setup.exe')) { throw 'Setup.exe missing' }
@@ -73,10 +135,23 @@ jobs:
           Compress-Archive -Path 'update-package\payload' -DestinationPath 'OrderManager_Update.zip' -Force
           $hash = (Get-FileHash 'OrderManager_Update.zip' -Algorithm SHA256).Hash.ToLower()
           "$hash  OrderManager_Update.zip" | Set-Content 'OrderManager_Update.zip.sha256' -Encoding ascii
+=======
+          if (-not $env:NSIS_EXE -or -not (Test-Path $env:NSIS_EXE)) {
+            throw "NSIS_EXE is missing or does not exist: '$env:NSIS_EXE'"
+          }
+          & $env:NSIS_EXE /V3 installer.nsi
+          if ($LASTEXITCODE -ne 0) {
+            throw "NSIS build failed with exit code $LASTEXITCODE"
+          }
+          if (-not (Test-Path "OrderManager_Setup.exe")) {
+            throw "Installer was not created: OrderManager_Setup.exe"
+          }
+>>>>>>> ba80537ed0dae1c1203f0fc5c6307583059d2b9a
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
+<<<<<<< HEAD
           name: OrderManager-Windows-${{ env.APP_VERSION }}
           path: |
             OrderManager_Setup.exe
@@ -95,3 +170,9 @@ jobs:
             OrderManager_Setup.exe
             OrderManager_Update.zip
             OrderManager_Update.zip.sha256
+=======
+          name: OrderManager-Windows-Installer
+          path: OrderManager_Setup.exe
+          if-no-files-found: error
+          retention-days: 30
+>>>>>>> ba80537ed0dae1c1203f0fc5c6307583059d2b9a
