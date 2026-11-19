@@ -1,4 +1,4 @@
 {
-  "github_repo": "OWNER/REPOSITORY",
+  "github_repo": "pjw1810/saenae-order-manager-2",
   "release_api": "https://api.github.com/repos/{github_repo}/releases/latest"
 }
