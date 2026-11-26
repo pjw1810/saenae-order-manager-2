@@ -679,6 +679,9 @@ class MainWindow(QMainWindow):
         self.thread_pool = QThreadPool.globalInstance()
         self._polling = False
         self._last_data_signature = None
+        # Track order IDs so each client can notify only for newly synchronized orders.
+        self._known_order_ids = None
+        self._pending_local_new_ids = set()
         self.timer = QTimer(self); self.timer.timeout.connect(self.refresh); self.timer.start(5000)
         self.backup_timer = QTimer(self); self.backup_timer.timeout.connect(self.maybe_daily_backup); self.backup_timer.start(60000)
         self.last_daily_backup = None
@@ -846,6 +849,24 @@ class MainWindow(QMainWindow):
         self.connection.setProperty("state", "connected")
         self.connection.style().unpolish(self.connection)
         self.connection.style().polish(self.connection)
+        current_ids = {int(row["id"]) for row in rows if row.get("id") is not None}
+        if self._known_order_ids is None:
+            # First successful load establishes the baseline, but still report a
+            # local order created before that first poll completed.
+            new_ids = current_ids & self._pending_local_new_ids
+            self._known_order_ids = set(current_ids)
+        else:
+            new_ids = current_ids - self._known_order_ids
+            new_ids |= current_ids & self._pending_local_new_ids
+            self._known_order_ids.update(current_ids)
+        self._pending_local_new_ids.difference_update(current_ids)
+        if new_ids:
+            count = len(new_ids)
+            QMessageBox.information(
+                self, "발주 동기화 완료",
+                f"{count}건의 발주가 새로 등록되었습니다."
+            )
+
         if signature != self._last_data_signature:
             self._last_data_signature = signature
             self.rows = rows
@@ -914,6 +935,9 @@ class MainWindow(QMainWindow):
             try:
                 r = self.request("POST","/api/orders",json=data)
                 if r.status_code >= 400: raise Exception(r.json().get("error","등록 실패"))
+                created_id = r.json().get("id")
+                if created_id is not None:
+                    self._pending_local_new_ids.add(int(created_id))
                 self.refresh()
             except Exception as e: QMessageBox.critical(self,"등록 실패",str(e))
 
